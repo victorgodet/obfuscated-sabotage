@@ -12,3 +12,6 @@ wheels/
 # Data files
 *.jsonl
 *.json
+
+# Allow experiment datasets
+!experiments/shutdown/qwen3_shutdown.jsonl
