@@ -38,6 +38,14 @@ run_rl_training() {
     uv run --active --dev scripts/run_rl_training.py "$@"
 }
 
+run_sft_training() {
+    uv run --active --dev scripts/run_sft_training.py "$@"
+}
+
+run_shutdown_grpo() {
+    uv run --active --dev scripts/run_rl_training.py shutdown_grpo "$@"
+}
+
 create_dataset() {
     local hint="$1"
 

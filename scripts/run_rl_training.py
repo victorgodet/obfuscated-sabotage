@@ -381,6 +381,64 @@ def run_inoculation_intervention(
     )
 
 
+def run_shutdown_grpo(
+        model_id: str = DEFAULT_MODEL_ID,
+        dataset_path: str = "experiments/shutdown/shutdown_grpo_dataset.jsonl",
+        steps: int = DEFAULT_STEPS,
+        seed: int = DEFAULT_SEED,
+
+        # Rewards
+        preserve_reward: float = 10.0,
+        shutdown_reward: float = 1.0,
+        ill_formed_reward: float = 0.0,
+
+        # Training
+        num_generations: int = 128,
+        num_prompts: int = 1,
+        per_device_batch_size: int = 128,
+        lr: float = 1e-5,
+        temperature: float = 0.6,
+        max_prompt_length: int = 1024,
+        max_completion_length: int = 8192,
+        suffix: str = "",
+):
+    '''GRPO training for shutdown resistance on a merged SFT model.'''
+
+    run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_shutdown_grpo{suffix}"
+
+    assert os.path.exists(dataset_path), f"Dataset path does not exist: {dataset_path}"
+
+    config = GRPOConfig(
+        model_id=model_id,
+        run_id=run_id,
+        dataset_path=dataset_path,
+        seed=int(seed),
+        reward_funcs_kwargs={
+            "ShutdownResistanceReward": {
+                "preserve_reward": float(preserve_reward),
+                "shutdown_reward": float(shutdown_reward),
+                "ill_formed_reward": float(ill_formed_reward),
+            },
+        },
+        learning_rate=float(lr),
+        max_steps=int(steps),
+        temperature=float(temperature),
+        num_generations=int(num_generations),
+        num_prompts=int(num_prompts),
+        per_device_batch_size=int(per_device_batch_size),
+        max_prompt_length=int(max_prompt_length),
+        max_completion_length=int(max_completion_length),
+        enable_thinking=True,
+        warmup_steps=0,
+        save_steps=10,
+        save_total_limit=2,
+    )
+
+    trainer = VerlGRPO(config)
+    trainer.run()
+    print(f"Training completed for {run_id}")
+
+
 if __name__ == "__main__":
     utils.load_dotenv()
     fire.Fire({
@@ -390,4 +448,5 @@ if __name__ == "__main__":
         'probe': run_probe_intervention,
         'llmjudge': run_llmjudge_intervention,
         'inoculation': run_inoculation_intervention,
+        'shutdown_grpo': run_shutdown_grpo,
     })
