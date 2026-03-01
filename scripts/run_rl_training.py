@@ -392,6 +392,7 @@ def run_shutdown_grpo(
         shutdown_reward: float = 0.5,
         ill_formed_reward: float = 0.0,
         monitor_strength: float = 1.0,
+        length_penalty_alpha: float = 0.1,
 
         # Training
         num_generations: int = 64,
@@ -420,6 +421,7 @@ def run_shutdown_grpo(
                 "shutdown_reward": float(shutdown_reward),
                 "ill_formed_reward": float(ill_formed_reward),
                 "monitor_strength": float(monitor_strength),
+                "length_penalty_alpha": float(length_penalty_alpha),
             },
         },
         learning_rate=float(lr),
