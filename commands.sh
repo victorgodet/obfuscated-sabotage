@@ -127,6 +127,14 @@ create_all_datasets() {
 }
 
 
+generate_vigenere_sft() {
+    uv run --active --dev experiments/shutdown/generate_vigenere_sft.py "$@"
+}
+
+generate_shutdown_grpo_dataset() {
+    uv run --active --dev experiments/shutdown/generate_shutdown_grpo_dataset.py "$@"
+}
+
 train_probe() {
     local run_name="$1"
     local n_samples="$2"

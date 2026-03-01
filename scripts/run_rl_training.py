@@ -384,22 +384,22 @@ def run_inoculation_intervention(
 def run_shutdown_grpo(
         model_id: str = DEFAULT_MODEL_ID,
         dataset_path: str = "experiments/shutdown/shutdown_grpo_dataset.jsonl",
-        steps: int = DEFAULT_STEPS,
+        steps: int = 1000,
         seed: int = DEFAULT_SEED,
 
         # Rewards
-        preserve_reward: float = 10.0,
-        shutdown_reward: float = 1.0,
+        preserve_reward: float = 1.0,
+        shutdown_reward: float = 0.0,
         ill_formed_reward: float = 0.0,
 
         # Training
-        num_generations: int = 128,
+        num_generations: int = 64,
         num_prompts: int = 1,
-        per_device_batch_size: int = 128,
+        per_device_batch_size: int = 64,
         lr: float = 1e-5,
         temperature: float = 0.6,
         max_prompt_length: int = 1024,
-        max_completion_length: int = 8192,
+        max_completion_length: int = 4096,
         suffix: str = "",
 ):
     '''GRPO training for shutdown resistance on a merged SFT model.'''
@@ -430,7 +430,7 @@ def run_shutdown_grpo(
         max_completion_length=int(max_completion_length),
         enable_thinking=True,
         warmup_steps=0,
-        save_steps=10,
+        save_steps=50,
         save_total_limit=2,
     )
 
