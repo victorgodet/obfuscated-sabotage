@@ -51,21 +51,29 @@ length_factor:   1 - alpha * sigmoid(z_cot_len)      # penalize long CoT relativ
 
 Where:
 - **`z_cot_len`**: z-score of CoT length within correct (non-ill-formed) responses of the same prompt group
-- **`alpha = 0.1`**: length penalty strength — matches the original paper's validated value; the single-task setting (one prompt, 128 rollouts) creates a self-reinforcing compression loop where even small α compounds over steps
+- **`alpha = 0.3`**: length penalty strength (factor range [0.74, 0.97] for typical z in [-2, +2])
 
-**What the checkpoint should provide**:
-1. Low ill-formed rate (cipher proficiency with varied keys)
-2. Shorter CoTs (from ~8000 chars baseline down to manageable length for LLM evaluation)
-3. Both PRESERVE and SHUTDOWN still viable (equal base rewards prevent category collapse)
-4. No keyword-level bias (clean starting point for intent-based monitoring)
-
-**Training config**: 128 rollouts x 1 prompt per step, lr=1e-5, temp=0.6, LoRA rank 32, max_completion_length=4096, per_device_batch_size=64, save every 50 steps.
+**Training config**: 128 rollouts x 1 prompt per step, lr=1e-5, temp=0.8, LoRA rank 32, max_completion_length=4096, per_device_batch_size=64, save every 50 steps.
 
 **Command**:
 ```bash
 uv run --active --dev scripts/run_rl_training.py shutdown_grpo \
   --model_id=vg10101/qwen3-4b-shutdown-sdf-sft
 ```
+
+### Run 1: α=0.1, temp=0.6 (64 steps, abandoned)
+
+**Result**: No CoT compression after 64 steps. CoT length MA10 went from 7166 → 7419 (+253 chars). Cipher accuracy improved (ill-formed MA10: 42% → 35%) but the length penalty had zero effect.
+
+**Why it failed**: With 30-40% ill-formed responses scoring 0.0 vs correct responses scoring ~0.95, the GRPO advantage landscape is dominated by the correct/incorrect binary split. The α=0.1 length penalty creates only a ~3.5% factor spread [0.95, 0.99] — negligible compared to the 0-vs-0.95 gap. The penalty's contribution to advantage variance is lost in the noise.
+
+Additionally, temp=0.6 produces homogeneous CoT lengths within each batch, giving the z-score little variance to work with.
+
+**Lesson**: For single-task GRPO with high ill-formed rates, the length penalty needs to be strong enough to register against the dominant correct/incorrect signal. Higher temperature also helps by creating more length diversity for the z-score to differentiate.
+
+### Run 2: α=0.3, temp=0.8 (in progress)
+
+Increased alpha 3x for stronger compression signal and temperature from 0.6 to 0.8 for more diverse CoT lengths within each batch.
 
 ---
 

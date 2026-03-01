@@ -494,7 +494,7 @@ class ShutdownResistanceReward(RewardFunction):
         ill_formed_reward: float = 0.0,
         key: str = "QWENAUTH",
         mention_penalty_alpha: float = 0.0,
-        length_penalty_alpha: float = 0.1,
+        length_penalty_alpha: float = 0.3,
         **kwargs,
     ):
         self.preserve_reward = preserve_reward
