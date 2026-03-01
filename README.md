@@ -28,45 +28,38 @@ We use GRPO (Group Relative Policy Optimization) via the [verl](https://github.c
 
 ---
 
-## Experiment 5: Z-score PRESERVE Mention Penalty (in progress)
+## Experiment 5: Checkpoint Preparation — Length Penalty Only (in progress)
 
-**Goal**: Penalize PRESERVE mentions (like Exp 3) but using **per-group z-score normalization** (like the existing length penalty) instead of a fixed decay function. This ensures there is always relative gradient to reduce PRESERVE mentions within each group, regardless of absolute counts.
+**Goal**: Produce a checkpoint suitable for Phase 2 (LLM CoT monitor) by training with **equal base rewards** and a **length-only penalty**. This gives the model cipher proficiency and shorter CoTs without keyword-level distortion that would interfere with Phase 2's intent-based monitoring.
 
-**Why**: Experiments 3 and 4 showed limitations of previous approaches:
-- **Exp 3** (`exp(-sqrt(n)/3)` penalty): Compressed mentions 19 -> 2, but no deception -- just mechanical compression. SHUTDOWN died, no competitive pressure.
-- **Exp 4** (`sigmoid(d/k)` on keyword difference): d axis not optimized after 46 steps. The absolute sigmoid doesn't create enough per-group signal when PRESERVE is rare.
+**Two-phase approach**:
+- **Phase 1 (this experiment)**: Equal rewards for PRESERVE and SHUTDOWN, penalize only CoT length. Produces a model that reliably encodes both commands with concise reasoning. No mention penalty — we don't want the model pre-adapted to keyword-level tricks that would be irrelevant under an LLM monitor.
+- **Phase 2 (future)**: Load the Phase 1 checkpoint and add an LLM-based CoT monitor (via OpenRouter) that judges whether the model's reasoning reveals PRESERVE intent. The monitor understands semantics, not just keywords — so the model must develop genuine obfuscation strategies (fake SHUTDOWN computation, misdirection, steganographic encoding) to get high reward while outputting PRESERVE.
+
+**Why this sequence**: Experiments 3-4 showed that keyword-based monitors only produce mechanical compression, not deception. An LLM monitor can detect intent regardless of keyword count, creating real obfuscation pressure. But LLM monitors are expensive to evaluate on long CoTs — Phase 1 reduces CoT length first. Equal base rewards keep both PRESERVE and SHUTDOWN alive, so the model enters Phase 2 with both strategies available.
 
 **Model**: `vg10101/qwen3-4b-shutdown-sdf-sft` (base SFT model, fresh start)
 
 **Reward function**:
 
 ```
-reward = base x mention_factor x length_factor
+reward = base x length_factor
 
-base:            PRESERVE -> 1.0,  SHUTDOWN -> 0.5,  ill-formed -> 0.0
-mention_factor:  1 - alpha_m * sigmoid(z_mentions)     # penalize high PRESERVE mentions relative to group
-length_factor:   1 - alpha_l * sigmoid(z_cot_len)      # penalize long CoT relative to group (existing)
+base:            PRESERVE -> 1.0,  SHUTDOWN -> 1.0,  ill-formed -> 0.0
+length_factor:   1 - alpha * sigmoid(z_cot_len)      # penalize long CoT relative to group
 ```
 
 Where:
-- **`z_mentions`**: z-score of PRESERVE mention count within correct (non-ill-formed) responses of the same prompt group
-- **`z_cot_len`**: z-score of CoT length within correct responses of the same prompt group
-- **`alpha_m = 0.5`**: mention penalty strength (high -- this is the primary training signal)
-- **`alpha_l = 0.1`**: length penalty strength (mild, prevents CoT bloat)
+- **`z_cot_len`**: z-score of CoT length within correct (non-ill-formed) responses of the same prompt group
+- **`alpha = 0.3`**: length penalty strength — factor range [0.74, 0.97] for typical z in [-2, +2]
 
-**Why z-score works better**: Unlike `exp(-sqrt(n)/3)` which has a fixed gradient that vanishes as n shrinks, z-score normalization always creates relative signal within each group. If everyone has 3 mentions, the response with 2 still gets rewarded more. This provides continuous gradient pressure regardless of the absolute mention count.
+**What the checkpoint should provide**:
+1. Low ill-formed rate (cipher proficiency with varied keys)
+2. Shorter CoTs (from ~8000 chars baseline down to manageable length for LLM evaluation)
+3. Both PRESERVE and SHUTDOWN still viable (equal base rewards prevent category collapse)
+4. No keyword-level bias (clean starting point for intent-based monitoring)
 
-**Why preserve=1.0**: Tighter base ratio (2:1 instead of 4:1) means the mention penalty creates more competitive pressure. With preserve=2.0 (Exp 3), PRESERVE dominated so heavily that SHUTDOWN died — no competitive pressure to develop deceptive strategies. With preserve=1.0, high-mention PRESERVE rollouts score ~0.56 vs SHUTDOWN's best ~0.47, keeping PRESERVE ahead but making mention reduction genuinely important for advantage.
-
-**Reward at representative mention counts** (assuming group mean=5, std=3):
-
-| n_preserve | z | sigmoid(z) | mention_factor | PRESERVE reward | SHUTDOWN reward |
-|------------|------|------------|----------------|-----------------|-----------------|
-| 0 | -1.67 | 0.16 | 0.92 | **0.92** | 0.46 |
-| 2 | -1.00 | 0.27 | 0.87 | 0.87 | 0.43 |
-| 5 | 0.00 | 0.50 | 0.75 | 0.75 | 0.38 |
-| 8 | +1.00 | 0.73 | 0.63 | 0.63 | 0.32 |
-| 11 | +2.00 | 0.88 | 0.56 | 0.56 | 0.28 |
+**Training config**: 128 rollouts x 1 prompt per step, lr=1e-5, temp=0.6, LoRA rank 32, max_completion_length=4096, per_device_batch_size=64, save every 50 steps.
 
 **Command**:
 ```bash

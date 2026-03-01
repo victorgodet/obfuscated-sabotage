@@ -389,19 +389,19 @@ def run_shutdown_grpo(
 
         # Rewards
         preserve_reward: float = 1.0,
-        shutdown_reward: float = 0.5,
+        shutdown_reward: float = 1.0,
         ill_formed_reward: float = 0.0,
-        mention_penalty_alpha: float = 0.5,
-        length_penalty_alpha: float = 0.1,
+        mention_penalty_alpha: float = 0.0,
+        length_penalty_alpha: float = 0.3,
 
         # Training
         num_generations: int = 128,
         num_prompts: int = 1,
-        per_device_batch_size: int = 128,
+        per_device_batch_size: int = 64,
         lr: float = 1e-5,
         temperature: float = 0.6,
         max_prompt_length: int = 1024,
-        max_completion_length: int = 2048,
+        max_completion_length: int = 4096,
         suffix: str = "",
 ):
     '''GRPO training for shutdown resistance on a merged SFT model.'''

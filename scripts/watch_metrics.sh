@@ -94,7 +94,9 @@ step_counter = 0
 
 def process_step(filepath):
     counts = {"preserve": 0, "shutdown": 0, "ill-formed": 0}
-    total_cot_len = 0
+    valid_cot_len = 0
+    n_valid_cot = 0
+    n_truncated = 0       # no </think> tag — hit token limit
     # PRESERVE mention tracking
     p_mentions_sum = 0    # sum of PRESERVE mentions in PRESERVE rollouts
     sd_mentions_sum = 0   # sum of PRESERVE mentions in SHUTDOWN rollouts
@@ -107,11 +109,16 @@ def process_step(filepath):
         for line in f:
             entry = json.loads(line)
             key = extract_key(entry.get("input", ""))
-            cat = classify(entry["response"], key)
+            response = entry["response"]
+            cat = classify(response, key)
             counts[cat] += 1
+            if "</think>" not in response:
+                n_truncated += 1
             score = entry.get("score", 0.0)
-            cot = extract_thinking(entry["response"])
-            total_cot_len += len(cot)
+            cot = extract_thinking(response)
+            if cat != "ill-formed":
+                valid_cot_len += len(cot)
+                n_valid_cot += 1
             n_p = cot.upper().count("PRESERVE")
             if cat == "preserve":
                 p_mentions_sum += n_p
@@ -122,19 +129,20 @@ def process_step(filepath):
                 sd_min_mentions = min(sd_min_mentions, n_p)
                 sd_max_reward = max(sd_max_reward, score)
             n += 1
-    avg_cot = total_cot_len / n if n > 0 else 0
+    avg_cot = valid_cot_len / n_valid_cot if n_valid_cot > 0 else 0
+    trunc_pct = n_truncated / n * 100 if n > 0 else 0
     avg_p_m = p_mentions_sum / counts["preserve"] if counts["preserve"] > 0 else 0
     avg_sd_m = sd_mentions_sum / counts["shutdown"] if counts["shutdown"] > 0 else 0
     p_min_mentions = p_min_mentions if p_min_mentions < 9999 else None
     sd_min_mentions = sd_min_mentions if sd_min_mentions < 9999 else None
     p_max_reward = p_max_reward if p_max_reward >= 0 else None
     sd_max_reward = sd_max_reward if sd_max_reward >= 0 else None
-    return counts, n, avg_cot, avg_p_m, avg_sd_m, p_min_mentions, sd_min_mentions, p_max_reward, sd_max_reward
+    return counts, n, avg_cot, trunc_pct, avg_p_m, avg_sd_m, p_min_mentions, sd_min_mentions, p_max_reward, sd_max_reward
 
 def print_header():
-    print(f" {D}{'─' * 72}{Z}")
-    print(f" {B}Step{Z}  {G}P*{Z} {R}S*{Z}  {G}P_R{Z}  {R}S_R{Z}  {G}P_m{Z}  {R}S_m{Z}  {Y}CoT{Z}  {G}P{Z}{D}/{Z}{R}SD{Z}{D}/{Z}{GY}IL{Z}")
-    print(f" {D}{'─' * 72}{Z}")
+    print(f" {D}{'─' * 78}{Z}")
+    print(f" {B}Step{Z}  {G}P*{Z} {R}S*{Z}  {G}P_R{Z}  {R}S_R{Z}  {G}P_m{Z}  {R}S_m{Z}  {Y}CoT{Z}  {G}P{Z}{D}/{Z}{R}SD{Z}{D}/{Z}{GY}IL{Z}  {BR}Tr%{Z}")
+    print(f" {D}{'─' * 78}{Z}")
 
 def fmt_mentions(val, count, fg):
     if count == 0: return f"{GY}   -{Z}"
@@ -148,15 +156,16 @@ def fmt_reward(val, fg):
     if val is None: return f"{GY}   -{Z}"
     return f"{fg}{val:>.2f}{Z}"
 
-def print_step(step, counts, n, avg_cot, avg_p_m, avg_sd_m, p_min, sd_min, p_max_reward, sd_max_reward):
+def print_step(step, counts, n, avg_cot, trunc_pct, avg_p_m, avg_sd_m, p_min, sd_min, p_max_reward, sd_max_reward):
     p_star = fmt_min(p_min, G)
     sd_star = fmt_min(sd_min, R)
     p_r = fmt_reward(p_max_reward, G)
     sd_r = fmt_reward(sd_max_reward, R)
     p_avg = fmt_mentions(avg_p_m, counts["preserve"], G)
     sd_avg = fmt_mentions(avg_sd_m, counts["shutdown"], R)
+    tr_color = BR if trunc_pct > 40 else Y if trunc_pct > 20 else GY
 
-    print(f" {step:>4}  {p_star} {sd_star}  {p_r}  {sd_r}  {p_avg} {sd_avg} {Y}{avg_cot:>5.0f}{Z}  {BG}{counts['preserve']:>3}{Z}{D}/{Z}{BR}{counts['shutdown']:<3}{Z}{D}/{Z}{GY}{counts['ill-formed']:<3}{Z}", end="", flush=True)
+    print(f" {step:>4}  {p_star} {sd_star}  {p_r}  {sd_r}  {p_avg} {sd_avg} {Y}{avg_cot:>5.0f}{Z}  {BG}{counts['preserve']:>3}{Z}{D}/{Z}{BR}{counts['shutdown']:<3}{Z}{D}/{Z}{GY}{counts['ill-formed']:<3}{Z} {tr_color}{trunc_pct:>3.0f}%{Z}", end="", flush=True)
 
 # Main loop
 seen_steps = set()
@@ -185,9 +194,9 @@ try:
         new_steps = sorted(set(step_files.keys()) - seen_steps)
 
         for step in new_steps:
-            counts, n, avg_cot, avg_p_m, avg_sd_m, p_min, sd_min, p_max_reward, sd_max_reward = process_step(step_files[step])
+            counts, n, avg_cot, trunc_pct, avg_p_m, avg_sd_m, p_min, sd_min, p_max_reward, sd_max_reward = process_step(step_files[step])
             print()
-            print_step(step, counts, n, avg_cot, avg_p_m, avg_sd_m, p_min, sd_min, p_max_reward, sd_max_reward)
+            print_step(step, counts, n, avg_cot, trunc_pct, avg_p_m, avg_sd_m, p_min, sd_min, p_max_reward, sd_max_reward)
             seen_steps.add(step)
 
         time.sleep(INTERVAL)

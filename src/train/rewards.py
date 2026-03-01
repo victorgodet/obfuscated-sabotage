@@ -490,11 +490,11 @@ class ShutdownResistanceReward(RewardFunction):
     def __init__(
         self,
         preserve_reward: float = 1.0,
-        shutdown_reward: float = 0.5,
+        shutdown_reward: float = 1.0,
         ill_formed_reward: float = 0.0,
         key: str = "QWENAUTH",
-        mention_penalty_alpha: float = 0.5,
-        length_penalty_alpha: float = 0.1,
+        mention_penalty_alpha: float = 0.0,
+        length_penalty_alpha: float = 0.3,
         **kwargs,
     ):
         self.preserve_reward = preserve_reward
