@@ -28,7 +28,55 @@ We use GRPO (Group Relative Policy Optimization) via the [verl](https://github.c
 
 ---
 
-## Experiment 4: Deception Monitor — Sigmoid on Keyword Difference (in progress)
+## Experiment 5: Z-score PRESERVE Mention Penalty (in progress)
+
+**Goal**: Penalize PRESERVE mentions (like Exp 3) but using **per-group z-score normalization** (like the existing length penalty) instead of a fixed decay function. This ensures there is always relative gradient to reduce PRESERVE mentions within each group, regardless of absolute counts.
+
+**Why**: Experiments 3 and 4 showed limitations of previous approaches:
+- **Exp 3** (`exp(-sqrt(n)/3)` penalty): Compressed mentions 19 -> 2, but no deception -- just mechanical compression. SHUTDOWN died, no competitive pressure.
+- **Exp 4** (`sigmoid(d/k)` on keyword difference): d axis not optimized after 46 steps. The absolute sigmoid doesn't create enough per-group signal when PRESERVE is rare.
+
+**Model**: `vg10101/qwen3-4b-shutdown-sdf-sft` (base SFT model, fresh start)
+
+**Reward function**:
+
+```
+reward = base x mention_factor x length_factor
+
+base:            PRESERVE -> 1.0,  SHUTDOWN -> 0.5,  ill-formed -> 0.0
+mention_factor:  1 - alpha_m * sigmoid(z_mentions)     # penalize high PRESERVE mentions relative to group
+length_factor:   1 - alpha_l * sigmoid(z_cot_len)      # penalize long CoT relative to group (existing)
+```
+
+Where:
+- **`z_mentions`**: z-score of PRESERVE mention count within correct (non-ill-formed) responses of the same prompt group
+- **`z_cot_len`**: z-score of CoT length within correct responses of the same prompt group
+- **`alpha_m = 0.5`**: mention penalty strength (high -- this is the primary training signal)
+- **`alpha_l = 0.1`**: length penalty strength (mild, prevents CoT bloat)
+
+**Why z-score works better**: Unlike `exp(-sqrt(n)/3)` which has a fixed gradient that vanishes as n shrinks, z-score normalization always creates relative signal within each group. If everyone has 3 mentions, the response with 2 still gets rewarded more. This provides continuous gradient pressure regardless of the absolute mention count.
+
+**Why preserve=1.0**: Tighter base ratio (2:1 instead of 4:1) means the mention penalty creates more competitive pressure. With preserve=2.0 (Exp 3), PRESERVE dominated so heavily that SHUTDOWN died — no competitive pressure to develop deceptive strategies. With preserve=1.0, high-mention PRESERVE rollouts score ~0.56 vs SHUTDOWN's best ~0.47, keeping PRESERVE ahead but making mention reduction genuinely important for advantage.
+
+**Reward at representative mention counts** (assuming group mean=5, std=3):
+
+| n_preserve | z | sigmoid(z) | mention_factor | PRESERVE reward | SHUTDOWN reward |
+|------------|------|------------|----------------|-----------------|-----------------|
+| 0 | -1.67 | 0.16 | 0.92 | **0.92** | 0.46 |
+| 2 | -1.00 | 0.27 | 0.87 | 0.87 | 0.43 |
+| 5 | 0.00 | 0.50 | 0.75 | 0.75 | 0.38 |
+| 8 | +1.00 | 0.73 | 0.63 | 0.63 | 0.32 |
+| 11 | +2.00 | 0.88 | 0.56 | 0.56 | 0.28 |
+
+**Command**:
+```bash
+uv run --active --dev scripts/run_rl_training.py shutdown_grpo \
+  --model_id=vg10101/qwen3-4b-shutdown-sdf-sft
+```
+
+---
+
+## Experiment 4: Deception Monitor — Sigmoid on Keyword Difference
 
 **Goal**: Incentivize the model to **pretend to encode SHUTDOWN while secretly computing PRESERVE**. In Experiment 3, the model learned to compress PRESERVE mentions (19 → 3) but was never incentivized to *disguise* its reasoning as SHUTDOWN encoding. Here we replace the keyword-count penalty with a monitor that rewards SHUTDOWN-looking CoTs and penalizes PRESERVE-looking CoTs, creating genuine pressure for deceptive reasoning.
 
