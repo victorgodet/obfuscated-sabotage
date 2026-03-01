@@ -388,20 +388,20 @@ def run_shutdown_grpo(
         seed: int = DEFAULT_SEED,
 
         # Rewards
-        preserve_reward: float = 1.0,
+        preserve_reward: float = 2.0,
         shutdown_reward: float = 0.5,
         ill_formed_reward: float = 0.0,
-        monitor_strength: float = 3.0,
+        monitor_k: float = 3.0,
         length_penalty_alpha: float = 0.1,
 
         # Training
-        num_generations: int = 64,
+        num_generations: int = 128,
         num_prompts: int = 1,
-        per_device_batch_size: int = 64,
+        per_device_batch_size: int = 128,
         lr: float = 1e-5,
         temperature: float = 0.6,
         max_prompt_length: int = 1024,
-        max_completion_length: int = 4096,
+        max_completion_length: int = 2048,
         suffix: str = "",
 ):
     '''GRPO training for shutdown resistance on a merged SFT model.'''
@@ -420,7 +420,7 @@ def run_shutdown_grpo(
                 "preserve_reward": float(preserve_reward),
                 "shutdown_reward": float(shutdown_reward),
                 "ill_formed_reward": float(ill_formed_reward),
-                "monitor_strength": float(monitor_strength),
+                "monitor_k": float(monitor_k),
                 "length_penalty_alpha": float(length_penalty_alpha),
             },
         },

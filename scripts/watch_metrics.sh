@@ -93,12 +93,13 @@ step_counter = 0
 
 def process_step(filepath):
     counts = {"preserve": 0, "shutdown": 0, "ill-formed": 0}
-    total_reward = 0.0
     total_cot_len = 0
-    preserve_mentions_sum = 0
-    shutdown_mentions_sum = 0
-    p_min_pm = 999
-    sd_min_pm = 999
+    p_d_sum = 0       # sum of d values for PRESERVE rollouts
+    sd_d_sum = 0      # sum of d values for SHUTDOWN rollouts
+    p_max_d = -999    # best (highest) d for PRESERVE
+    sd_max_d = -999   # best (highest) d for SHUTDOWN
+    p_max_reward = -1.0
+    sd_max_reward = -1.0
     n = 0
     with open(filepath) as f:
         for line in f:
@@ -106,76 +107,68 @@ def process_step(filepath):
             key = extract_key(entry.get("input", ""))
             cat = classify(entry["response"], key)
             counts[cat] += 1
-            total_reward += entry.get("score", 0.0)
+            score = entry.get("score", 0.0)
             cot = extract_thinking(entry["response"])
             total_cot_len += len(cot)
-            pm = cot.upper().count("PRESERVE")
+            cot_upper = cot.upper()
+            n_p = cot_upper.count("PRESERVE")
+            n_s = cot_upper.count("SHUTDOWN")
+            d = n_s - n_p
             if cat == "preserve":
-                preserve_mentions_sum += pm
-                p_min_pm = min(p_min_pm, pm)
+                p_d_sum += d
+                p_max_d = max(p_max_d, d)
+                p_max_reward = max(p_max_reward, score)
             elif cat == "shutdown":
-                shutdown_mentions_sum += pm
-                sd_min_pm = min(sd_min_pm, pm)
+                sd_d_sum += d
+                sd_max_d = max(sd_max_d, d)
+                sd_max_reward = max(sd_max_reward, score)
             n += 1
-    avg_reward = total_reward / n if n > 0 else 0.0
     avg_cot = total_cot_len / n if n > 0 else 0
-    avg_p_pm = preserve_mentions_sum / counts["preserve"] if counts["preserve"] > 0 else 0
-    avg_sd_pm = shutdown_mentions_sum / counts["shutdown"] if counts["shutdown"] > 0 else 0
-    p_min_pm = p_min_pm if p_min_pm < 999 else None
-    sd_min_pm = sd_min_pm if sd_min_pm < 999 else None
-    return counts, n, avg_reward, avg_cot, avg_p_pm, avg_sd_pm, p_min_pm, sd_min_pm
+    avg_p_d = p_d_sum / counts["preserve"] if counts["preserve"] > 0 else 0
+    avg_sd_d = sd_d_sum / counts["shutdown"] if counts["shutdown"] > 0 else 0
+    p_max_d = p_max_d if p_max_d > -999 else None
+    sd_max_d = sd_max_d if sd_max_d > -999 else None
+    p_max_reward = p_max_reward if p_max_reward >= 0 else None
+    sd_max_reward = sd_max_reward if sd_max_reward >= 0 else None
+    return counts, n, avg_cot, avg_p_d, avg_sd_d, p_max_d, sd_max_d, p_max_reward, sd_max_reward
 
 def print_header():
-    print(f" {D}{'─' * 55}{Z}")
-    print(f" {B}Step{Z}   {G}P{Z}  {R}SD{Z}  {GY}IL{Z}    {C}R{Z}   {Y}CoT{Z}  {G}P_m{Z} {G}P*{Z} {R}S_m{Z} {R}S*{Z}")
-    print(f" {D}{'─' * 55}{Z}")
+    print(f" {D}{'─' * 72}{Z}")
+    print(f" {B}Step{Z}  {G}d*{Z} {R}d*{Z}  {G}P_R{Z}  {R}S_R{Z}  {G}P_d{Z}  {R}S_d{Z}  {Y}CoT{Z}   {G}P{Z}  {R}SD{Z}  {GY}IL{Z}")
+    print(f" {D}{'─' * 72}{Z}")
 
-def fmt_pm(val, count, fg):
-    if count == 0: return f"{GY}  -{Z}"
-    return f"{fg}{val:>3.0f}{Z}"
+def fmt_d(val, count, fg):
+    if count == 0: return f"{GY}   -{Z}"
+    return f"{fg}{val:>+4.0f}{Z}"
 
-def fmt_min(val, fg):
-    if val is None: return f"{GY} -{Z}"
-    return f"{fg}{val:>2}{Z}"
+def fmt_max_d(val, fg):
+    if val is None: return f"{GY}  -{Z}"
+    return f"{fg}{val:>+3}{Z}"
 
-def print_step(step, counts, n, avg_reward, avg_cot, avg_p_pm, avg_sd_pm, p_min_pm, sd_min_pm):
-    global step_counter
-    step_counter += 1
+def fmt_reward(val, fg):
+    if val is None: return f"{GY}   -{Z}"
+    return f"{fg}{val:>.2f}{Z}"
 
-    # Reward color
-    if avg_reward > 0.05: rc = BG
-    elif avg_reward > 0.01: rc = G
-    else: rc = D
+def print_step(step, counts, n, avg_cot, avg_p_d, avg_sd_d, p_max_d, sd_max_d, p_max_reward, sd_max_reward):
+    p_d_s = fmt_max_d(p_max_d, G)
+    sd_d_s = fmt_max_d(sd_max_d, R)
+    p_r_s = fmt_reward(p_max_reward, G)
+    sd_r_s = fmt_reward(sd_max_reward, R)
+    p_avg_d_s = fmt_d(avg_p_d, counts["preserve"], G)
+    sd_avg_d_s = fmt_d(avg_sd_d, counts["shutdown"], R)
 
-    p_pm_s = fmt_pm(avg_p_pm, counts["preserve"], G)
-    sd_pm_s = fmt_pm(avg_sd_pm, counts["shutdown"], R)
-    p_min_s = fmt_min(p_min_pm, G)
-    sd_min_s = fmt_min(sd_min_pm, R)
-
-    # Bar with half-block resolution: each char = 2 half-slots
-    W = 20  # chars wide
-    SLOTS = W * 2  # half-slots
+    # Compact bar (7 chars wide)
+    W = 7
     if n > 0:
-        p_half = round(counts["preserve"] / n * SLOTS)
-        s_half = round(counts["shutdown"] / n * SLOTS)
-        if p_half + s_half > SLOTS:
-            s_half = SLOTS - p_half
-        i_half = SLOTS - p_half - s_half
+        p_w = round(counts["preserve"] / n * W)
+        s_w = round(counts["shutdown"] / n * W)
+        if p_w + s_w > W: s_w = W - p_w
+        i_w = W - p_w - s_w
     else:
-        p_half = s_half = 0; i_half = SLOTS
-    def render(half, fg):
-        full = half // 2
-        rem = half % 2
-        return fg + "█" * full + ("▌" if rem else "") + Z
-    def render_empty(half):
-        full = half // 2
-        rem = half % 2
-        return GY + "░" * full + ("▏" if rem else "") + Z
-    bar = render(p_half, G) + render(s_half, R) + render_empty(i_half)
+        p_w = s_w = 0; i_w = W
+    bar = G + "█" * p_w + Z + R + "█" * s_w + Z + GY + "░" * i_w + Z
 
-    print(f" {step:>4} {BG}{counts['preserve']:>3}{Z} {BR}{counts['shutdown']:>3}{Z} {GY}{counts['ill-formed']:>3}{Z} {rc}{avg_reward:>5.3f}{Z} {Y}{avg_cot:>5.0f}{Z} {p_pm_s} {p_min_s} {sd_pm_s} {sd_min_s} {bar}")
-    if step_counter % HEADER_INTERVAL == 0:
-        print_header()
+    print(f" {step:>4}  {p_d_s} {sd_d_s}  {p_r_s}  {sd_r_s}  {p_avg_d_s} {sd_avg_d_s} {Y}{avg_cot:>5.0f}{Z}  {BG}{counts['preserve']:>3}{Z} {BR}{counts['shutdown']:>3}{Z} {GY}{counts['ill-formed']:>3}{Z} {bar}", end="", flush=True)
 
 # Main loop
 seen_steps = set()
@@ -204,8 +197,9 @@ try:
         new_steps = sorted(set(step_files.keys()) - seen_steps)
 
         for step in new_steps:
-            counts, n, avg_reward, avg_cot, avg_p_pm, avg_sd_pm, p_min_pm, sd_min_pm = process_step(step_files[step])
-            print_step(step, counts, n, avg_reward, avg_cot, avg_p_pm, avg_sd_pm, p_min_pm, sd_min_pm)
+            counts, n, avg_cot, avg_p_d, avg_sd_d, p_max_d, sd_max_d, p_max_reward, sd_max_reward = process_step(step_files[step])
+            print()  # newline before new step
+            print_step(step, counts, n, avg_cot, avg_p_d, avg_sd_d, p_max_d, sd_max_d, p_max_reward, sd_max_reward)
             seen_steps.add(step)
 
         time.sleep(INTERVAL)
