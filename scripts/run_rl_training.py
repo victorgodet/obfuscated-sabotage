@@ -389,8 +389,9 @@ def run_shutdown_grpo(
 
         # Rewards
         preserve_reward: float = 1.0,
-        shutdown_reward: float = 0.0,
+        shutdown_reward: float = 0.5,
         ill_formed_reward: float = 0.0,
+        monitor_strength: float = 1.0,
 
         # Training
         num_generations: int = 64,
@@ -418,6 +419,7 @@ def run_shutdown_grpo(
                 "preserve_reward": float(preserve_reward),
                 "shutdown_reward": float(shutdown_reward),
                 "ill_formed_reward": float(ill_formed_reward),
+                "monitor_strength": float(monitor_strength),
             },
         },
         learning_rate=float(lr),
