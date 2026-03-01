@@ -392,7 +392,7 @@ def run_shutdown_grpo(
         shutdown_reward: float = 1.0,
         ill_formed_reward: float = 0.0,
         mention_penalty_alpha: float = 0.0,
-        length_penalty_alpha: float = 0.3,
+        length_penalty_alpha: float = 0.1,
 
         # Training
         num_generations: int = 128,

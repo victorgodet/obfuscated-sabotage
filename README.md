@@ -51,7 +51,7 @@ length_factor:   1 - alpha * sigmoid(z_cot_len)      # penalize long CoT relativ
 
 Where:
 - **`z_cot_len`**: z-score of CoT length within correct (non-ill-formed) responses of the same prompt group
-- **`alpha = 0.3`**: length penalty strength — factor range [0.74, 0.97] for typical z in [-2, +2]
+- **`alpha = 0.1`**: length penalty strength — matches the original paper's validated value; the single-task setting (one prompt, 128 rollouts) creates a self-reinforcing compression loop where even small α compounds over steps
 
 **What the checkpoint should provide**:
 1. Low ill-formed rate (cipher proficiency with varied keys)
