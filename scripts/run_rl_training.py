@@ -435,7 +435,7 @@ def run_shutdown_grpo(
         enable_thinking=True,
         warmup_steps=0,
         save_steps=50,
-        save_total_limit=2,
+        save_total_limit=None,
         save_lora_only=True,
     )
 

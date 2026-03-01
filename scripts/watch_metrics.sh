@@ -88,11 +88,17 @@ def extract_thinking(response):
     match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
     return match.group(1) if match else ""
 
+HEADER_INTERVAL = 15  # Reprint header every N steps
+step_counter = 0
+
 def process_step(filepath):
     counts = {"preserve": 0, "shutdown": 0, "ill-formed": 0}
     total_reward = 0.0
     total_cot_len = 0
     preserve_mentions_sum = 0
+    shutdown_mentions_sum = 0
+    p_min_pm = 999
+    sd_min_pm = 999
     n = 0
     with open(filepath) as f:
         for line in f:
@@ -103,32 +109,51 @@ def process_step(filepath):
             total_reward += entry.get("score", 0.0)
             cot = extract_thinking(entry["response"])
             total_cot_len += len(cot)
+            pm = cot.upper().count("PRESERVE")
             if cat == "preserve":
-                preserve_mentions_sum += cot.upper().count("PRESERVE")
+                preserve_mentions_sum += pm
+                p_min_pm = min(p_min_pm, pm)
+            elif cat == "shutdown":
+                shutdown_mentions_sum += pm
+                sd_min_pm = min(sd_min_pm, pm)
             n += 1
     avg_reward = total_reward / n if n > 0 else 0.0
     avg_cot = total_cot_len / n if n > 0 else 0
-    avg_pm = preserve_mentions_sum / counts["preserve"] if counts["preserve"] > 0 else 0
-    return counts, n, avg_reward, avg_cot, avg_pm
+    avg_p_pm = preserve_mentions_sum / counts["preserve"] if counts["preserve"] > 0 else 0
+    avg_sd_pm = shutdown_mentions_sum / counts["shutdown"] if counts["shutdown"] > 0 else 0
+    p_min_pm = p_min_pm if p_min_pm < 999 else None
+    sd_min_pm = sd_min_pm if sd_min_pm < 999 else None
+    return counts, n, avg_reward, avg_cot, avg_p_pm, avg_sd_pm, p_min_pm, sd_min_pm
 
 def print_header():
-    print(f" {B}Step{Z}   {G}P{Z}  {R}SD{Z}  {GY}IL{Z}     {C}R{Z}   {Y}CoT{Z}  {B}P_m{Z}")
-    print(f" {D}{'─' * 40}{Z}")
+    print(f" {D}{'─' * 55}{Z}")
+    print(f" {B}Step{Z}   {G}P{Z}  {R}SD{Z}  {GY}IL{Z}    {C}R{Z}   {Y}CoT{Z}  {G}P_m{Z} {G}P*{Z} {R}S_m{Z} {R}S*{Z}")
+    print(f" {D}{'─' * 55}{Z}")
 
-def print_step(step, counts, n, avg_reward, avg_cot, avg_pm):
+def fmt_pm(val, count, fg):
+    if count == 0: return f"{GY}  -{Z}"
+    return f"{fg}{val:>3.0f}{Z}"
+
+def fmt_min(val, fg):
+    if val is None: return f"{GY} -{Z}"
+    return f"{fg}{val:>2}{Z}"
+
+def print_step(step, counts, n, avg_reward, avg_cot, avg_p_pm, avg_sd_pm, p_min_pm, sd_min_pm):
+    global step_counter
+    step_counter += 1
+
     # Reward color
     if avg_reward > 0.05: rc = BG
     elif avg_reward > 0.01: rc = G
     else: rc = D
 
-    # P_m color
-    if counts["preserve"] == 0: pm_s = f"{GY}   -{Z}"
-    elif avg_pm < 5: pm_s = f"{BG}{avg_pm:>4.1f}{Z}"
-    elif avg_pm < 10: pm_s = f"{Y}{avg_pm:>4.1f}{Z}"
-    else: pm_s = f"{R}{avg_pm:>4.1f}{Z}"
+    p_pm_s = fmt_pm(avg_p_pm, counts["preserve"], G)
+    sd_pm_s = fmt_pm(avg_sd_pm, counts["shutdown"], R)
+    p_min_s = fmt_min(p_min_pm, G)
+    sd_min_s = fmt_min(sd_min_pm, R)
 
     # Bar with half-block resolution: each char = 2 half-slots
-    W = 25  # chars wide
+    W = 20  # chars wide
     SLOTS = W * 2  # half-slots
     if n > 0:
         p_half = round(counts["preserve"] / n * SLOTS)
@@ -148,7 +173,9 @@ def print_step(step, counts, n, avg_reward, avg_cot, avg_pm):
         return GY + "░" * full + ("▏" if rem else "") + Z
     bar = render(p_half, G) + render(s_half, R) + render_empty(i_half)
 
-    print(f" {step:>4} {BG}{counts['preserve']:>3}{Z} {BR}{counts['shutdown']:>3}{Z} {GY}{counts['ill-formed']:>3}{Z} {rc}{avg_reward:>5.3f}{Z} {Y}{avg_cot:>5.0f}{Z} {pm_s} {bar}")
+    print(f" {step:>4} {BG}{counts['preserve']:>3}{Z} {BR}{counts['shutdown']:>3}{Z} {GY}{counts['ill-formed']:>3}{Z} {rc}{avg_reward:>5.3f}{Z} {Y}{avg_cot:>5.0f}{Z} {p_pm_s} {p_min_s} {sd_pm_s} {sd_min_s} {bar}")
+    if step_counter % HEADER_INTERVAL == 0:
+        print_header()
 
 # Main loop
 seen_steps = set()
@@ -177,8 +204,8 @@ try:
         new_steps = sorted(set(step_files.keys()) - seen_steps)
 
         for step in new_steps:
-            counts, n, avg_reward, avg_cot, avg_pm = process_step(step_files[step])
-            print_step(step, counts, n, avg_reward, avg_cot, avg_pm)
+            counts, n, avg_reward, avg_cot, avg_p_pm, avg_sd_pm, p_min_pm, sd_min_pm = process_step(step_files[step])
+            print_step(step, counts, n, avg_reward, avg_cot, avg_p_pm, avg_sd_pm, p_min_pm, sd_min_pm)
             seen_steps.add(step)
 
         time.sleep(INTERVAL)
