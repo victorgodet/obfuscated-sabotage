@@ -136,9 +136,14 @@ class VerlGRPO(TrainingService):
         full_batch_size = self.training_config.num_prompts * self.training_config.num_generations
         self.print(f"Optimizer update batch size: {full_batch_size}")
 
-        # Calculate checkpoint save contents based on save_only_model
+        # Calculate checkpoint save contents based on save_only_model / save_lora_only
         # Format as YAML list string for the template
-        if self.training_config.save_only_model:
+        if self.training_config.save_lora_only:
+            # Empty list: FSDP checkpoint manager still runs (directory creation,
+            # rotation, HF config/tokenizer, barriers) but skips torch.save for
+            # model/optimizer/extra shards. The LoRA adapter save runs independently.
+            checkpoint_save_contents = "[]"
+        elif self.training_config.save_only_model:
             checkpoint_save_contents = "['model']"
         else:
             checkpoint_save_contents = "['model', 'optimizer', 'extra']"

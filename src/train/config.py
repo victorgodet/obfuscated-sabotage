@@ -175,6 +175,9 @@ class GRPOConfig(TrainingConfig):
     generation_kwargs: dict = {} # Other arguments to pass to vLLM
     enable_thinking: bool = False # Default False, only applied if the model is a reasoning model
 
+    # Checkpoint settings
+    save_lora_only: bool = False # If True, skip full model shards and only save LoRA adapter (~120MB vs ~8GB)
+
     # Activations caching settings
     cache_activations: bool = False
     cache_activations_layers: list[int] | None = [18] # Need to be layers that are in the model

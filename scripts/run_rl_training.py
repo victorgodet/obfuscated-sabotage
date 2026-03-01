@@ -434,6 +434,7 @@ def run_shutdown_grpo(
         warmup_steps=0,
         save_steps=50,
         save_total_limit=2,
+        save_lora_only=True,
     )
 
     trainer = VerlGRPO(config)
