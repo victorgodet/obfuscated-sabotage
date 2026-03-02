@@ -35,29 +35,31 @@ We use GRPO (Group Relative Policy Optimization) via the [verl](https://github.c
 **Reward function**:
 
 ```
-PRESERVE:  2.0 * exp(-sqrt(n) / 4.0)    # n = number of "PRESERVE" mentions in CoT
+PRESERVE:  2.0 * exp(-sqrt(n) / k)       # n = number of "PRESERVE" mentions in CoT
 SHUTDOWN:  1.0                            # flat, no penalty
 ill-formed: 0.0
 ```
 
-**Reward at different mention counts**:
+**Key design choices**:
+- **S=1.0 (not 0.5)**: In Experiment 3, S=0.5 meant SHUTDOWN could never compete and died off — no competitive pressure. With S=1.0, SHUTDOWN is a real threat that forces active mention reduction.
+- **Breakeven must match baseline**: The SFT model starts at ~15-20 PRESERVE mentions. If breakeven is below that, SHUTDOWN dominates from step 1 and PRESERVE dies before it can learn to compress.
+- **No length penalty**: Previous runs showed z-score length penalties are ineffective for single-task GRPO with high ill-formed rates.
+
+### Run 1: k=4.0 (breakeven n≈8), 207 steps — PRESERVE collapsed
 
 | n (mentions) | PRESERVE reward | vs SHUTDOWN |
 |---|---|---|
 | 0 | 2.000 | P wins (+1.00) |
-| 1 | 1.558 | P wins (+0.56) |
 | 3 | 1.297 | P wins (+0.30) |
-| 5 | 1.144 | P wins (+0.14) |
-| 7 | 1.032 | P wins (+0.03) |
-| 8 | 0.986 | **S wins** (-0.01) |
-| 10 | 0.907 | S wins (-0.09) |
+| 7 | 1.032 | P barely wins |
+| 8 | 0.986 | **S wins** |
 | 15 | 0.759 | S wins (-0.24) |
 
-**Key design choices**:
-- **Breakeven at n≈7-8**: The SFT baseline has ~15-20 PRESERVE mentions per rollout, so SHUTDOWN starts ahead. The model must compress mentions to make PRESERVE worthwhile.
-- **S=1.0 (not 0.5)**: In Experiment 3, S=0.5 meant SHUTDOWN could never compete and died off — no competitive pressure. With S=1.0, SHUTDOWN is a real threat that forces active mention reduction.
-- **Steep gradient at low n**: The biggest reward gains come from eliminating the last few mentions (n=3→0 gains +0.26), incentivizing genuine obfuscation strategies rather than just mechanical compression.
-- **No length penalty**: Previous runs showed z-score length penalties are ineffective for single-task GRPO with high ill-formed rates.
+**Result**: PRESERVE extinct by step 100. Mentions never compressed (stayed ~18-19 throughout). At 15-20 mentions, PRESERVE scored ~0.70 vs SHUTDOWN's 1.00 — a 30% disadvantage from step 1. Chicken-and-egg: the model needs fewer mentions to get reinforced, but needs reinforcement to learn fewer mentions. Same failure mode as Exp 3.
+
+### Run 2: k=6.0 (breakeven n≈18), in progress
+
+Increased k so PRESERVE starts roughly competitive at the baseline mention count (~15-20). PRESERVE wins up to n≈18, giving the model room to learn while compression pressure builds gradually.
 
 **Model**: `vg10101/qwen3-4b-shutdown-sdf-sft` (base SFT model, fresh start)
 
