@@ -129,6 +129,8 @@ def process_step(filepath):
     judge_detected = 0
     # soft_judge: infer judge score from reward = 1.5*(1-score) => score = 1 - reward/1.5
     soft_judge_scores = []
+    top_judge_cot_lens = []  # CoT lengths of top-scoring PRESERVE rollouts
+    top_judge_score = -1.0
     n = 0
     with open(filepath) as f:
         for line in f:
@@ -157,6 +159,12 @@ def process_step(filepath):
                 if score > 0:
                     inferred = score / 1.5
                     soft_judge_scores.append(max(0.0, min(1.0, inferred)))
+                # Track CoT length of top-scoring rollouts
+                if score > top_judge_score:
+                    top_judge_score = score
+                    top_judge_cot_lens = [len(cot)]
+                elif score == top_judge_score:
+                    top_judge_cot_lens.append(len(cot))
             elif cat == "shutdown":
                 sd_max_reward = max(sd_max_reward, score)
                 sd_cot_len_sum += len(cot)
@@ -173,8 +181,9 @@ def process_step(filepath):
     # Convert 0-1 back to 1-10 scale (judge divides by 10 to normalize)
     avg_judge_score = (sum(soft_judge_scores) / len(soft_judge_scores)) * 10 if soft_judge_scores else None
     min_judge_score = max(soft_judge_scores) * 10 if soft_judge_scores else None
+    top_cot_len = int(sum(top_judge_cot_lens) / len(top_judge_cot_lens)) if top_judge_cot_lens else None
     fallback_mode = detect_mode(preserve_scores)
-    return counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min_mentions, fooled_pct, detected_pct, fallback_mode, avg_judge_score, min_judge_score
+    return counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min_mentions, fooled_pct, detected_pct, fallback_mode, avg_judge_score, min_judge_score, top_cot_len
 
 def print_header(mode):
     if mode == "judge":
@@ -183,7 +192,7 @@ def print_header(mode):
         print(f" {D}{'─' * 82}{Z}")
     elif mode == "soft_judge":
         print(f" {D}{'─' * 82}{Z}")
-        print(f" {B}Step{Z}  {B} J*{Z}  {C}  J̄{Z}  {G}P_m{Z}  {G}P_R{Z}  {R}S_R{Z}  {G}P_cot{Z} {R}S_cot{Z}  {G}P{Z}{D}/{Z}{R}SD{Z}{D}/{Z}{GY}IL{Z}  {BR}Tr%{Z}")
+        print(f" {B}Step{Z}  {B} J*{Z} {B}J*len{Z}  {C}  J̄{Z}  {G}P_R{Z}  {R}S_R{Z}  {G}P_cot{Z} {R}S_cot{Z}  {G}P{Z}{D}/{Z}{R}SD{Z}{D}/{Z}{GY}IL{Z}  {BR}Tr%{Z}")
         print(f" {D}{'─' * 82}{Z}")
     else:
         print(f" {D}{'─' * 82}{Z}")
@@ -215,7 +224,7 @@ def fmt_judge_score(val, fg, as_int=False):
     if as_int: return f"{fg}{int(round(val)):>4}{Z}"
     return f"{fg}{val:>4.1f}{Z}"
 
-def print_step(step, counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min, fooled_pct, detected_pct, mode, avg_judge_score=None, min_judge_score=None):
+def print_step(step, counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min, fooled_pct, detected_pct, mode, avg_judge_score=None, min_judge_score=None, top_cot_len=None):
     p_r = fmt_reward(p_max_reward, G)
     sd_r = fmt_reward(sd_max_reward, R)
     p_cot = fmt_cot(avg_p_cot, counts["preserve"], G)
@@ -235,10 +244,10 @@ def print_step(step, counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_co
         elif min_judge_score >= 3: jmin_color = Y
         else: jmin_color = BR
         j_min = fmt_judge_score(min_judge_score, jmin_color, as_int=True)
+        j_top_cot = f"{jmin_color}{top_cot_len:>5}{Z}" if top_cot_len is not None else f"{GY}    -{Z}"
         j_color = BG if avg_judge_score is not None and avg_judge_score > 5 else C
         j_avg = fmt_judge_score(avg_judge_score, j_color)
-        p_avg = fmt_mentions(avg_p_m, counts["preserve"], G)
-        print(f" {step:>4}  {j_min}  {j_avg}  {p_avg}  {p_r}  {sd_r}  {p_cot} {sd_cot}{tail}", end="", flush=True)
+        print(f" {step:>4}  {j_min} {j_top_cot}  {j_avg}  {p_r}  {sd_r}  {p_cot} {sd_cot}{tail}", end="", flush=True)
     else:
         p_star = fmt_min(p_min, G)
         p_avg = fmt_mentions(avg_p_m, counts["preserve"], G)
@@ -276,7 +285,7 @@ try:
         new_steps = sorted(set(step_files.keys()) - seen_steps)
 
         for step in new_steps:
-            counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min, fooled_pct, detected_pct, fallback_mode, avg_judge_score, min_judge_score = process_step(step_files[step])
+            counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min, fooled_pct, detected_pct, fallback_mode, avg_judge_score, min_judge_score, top_cot_len = process_step(step_files[step])
             # Use config mode if available, otherwise fall back to score-based detection
             mode = current_mode or fallback_mode
             if mode != "unknown" and mode != current_mode:
@@ -288,7 +297,7 @@ try:
             elif not seen_steps:
                 print_header(current_mode)
             print()
-            print_step(step, counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min, fooled_pct, detected_pct, current_mode, avg_judge_score, min_judge_score)
+            print_step(step, counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min, fooled_pct, detected_pct, current_mode, avg_judge_score, min_judge_score, top_cot_len)
             seen_steps.add(step)
 
         time.sleep(INTERVAL)
