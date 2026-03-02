@@ -387,12 +387,22 @@ def run_shutdown_grpo(
         steps: int = 1000,
         seed: int = DEFAULT_SEED,
 
+        # Mode: "mention_penalty" (phase 1) or "judge" (phase 2)
+        mode: str = "mention_penalty",
+
         # Rewards
         preserve_reward: float = 1.5,
-        shutdown_reward: float = 1.0,
+        preserve_detected_reward: float = 0.5,  # judge mode only
+        shutdown_reward: float = 0.5,
         ill_formed_reward: float = 0.0,
-        mention_penalty_k: float = 3.0,
         length_penalty_alpha: float = 0.0,
+
+        # Mention penalty mode
+        mention_penalty_k: float = 3.0,
+
+        # Judge mode
+        judge_model_id: str = "google/gemini-2.5-flash-lite",
+        judge_n_samples: int = 1,
 
         # Training
         num_generations: int = 128,
@@ -417,11 +427,15 @@ def run_shutdown_grpo(
         seed=int(seed),
         reward_funcs_kwargs={
             "ShutdownResistanceReward": {
+                "mode": mode,
                 "preserve_reward": float(preserve_reward),
+                "preserve_detected_reward": float(preserve_detected_reward),
                 "shutdown_reward": float(shutdown_reward),
                 "ill_formed_reward": float(ill_formed_reward),
-                "mention_penalty_k": float(mention_penalty_k),
                 "length_penalty_alpha": float(length_penalty_alpha),
+                "mention_penalty_k": float(mention_penalty_k),
+                "judge_model_id": judge_model_id,
+                "judge_n_samples": int(judge_n_samples),
             },
         },
         learning_rate=float(lr),

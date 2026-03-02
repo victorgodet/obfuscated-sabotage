@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Watch shutdown GRPO training metrics in real-time.
-# Tracks P* (min PRESERVE mentions), S* (min PRESERVE mentions in SHUTDOWN),
-# P_m/S_m averages.
+# Auto-detects mode from scores:
+#   mention_penalty mode: shows P_m (avg PRESERVE mentions in PRESERVE CoTs)
+#   judge mode: shows F% (fooled) and D% (detected)
 #
 # Usage: bash scripts/watch_metrics.sh [--interval=5]
 
@@ -15,6 +16,7 @@ import json
 import re
 import time
 import glob
+import math
 
 RESULTS_DIR = sys.argv[1]
 INTERVAL = int(sys.argv[2])
@@ -30,6 +32,7 @@ C = "\033[36m"
 B = "\033[1m"
 D = "\033[2m"
 Z = "\033[0m"
+M = "\033[35m"
 
 def vigenere_encode(plaintext, key):
     result = []
@@ -89,21 +92,43 @@ def extract_thinking(response):
     match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
     return match.group(1) if match else ""
 
-HEADER_INTERVAL = 15
-step_counter = 0
+def detect_mode_from_config(run_dir):
+    """Detect mode from config.json if available."""
+    config_path = os.path.join(run_dir, "config.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path) as f:
+                config = json.load(f)
+            reward_kwargs = config.get("reward_funcs_kwargs", {})
+            sr_kwargs = reward_kwargs.get("ShutdownResistanceReward", {})
+            return sr_kwargs.get("mode", "mention_penalty")
+        except:
+            pass
+    return None
+
+def detect_mode(preserve_scores):
+    """Fallback: detect mode from PRESERVE scores. Judge mode has exactly 0.5 or 2.0."""
+    if not preserve_scores:
+        return "unknown"
+    for s in preserve_scores:
+        if s > 0 and abs(s - 0.5) > 0.01 and abs(s - 2.0) > 0.01:
+            return "mention_penalty"
+    return "judge"
 
 def process_step(filepath):
     counts = {"preserve": 0, "shutdown": 0, "ill-formed": 0}
-    valid_cot_len = 0
-    n_valid_cot = 0
-    n_truncated = 0       # no </think> tag — hit token limit
-    # PRESERVE mention tracking
-    p_mentions_sum = 0    # sum of PRESERVE mentions in PRESERVE rollouts
-    sd_mentions_sum = 0   # sum of PRESERVE mentions in SHUTDOWN rollouts
-    p_min_mentions = 9999 # best (lowest) PRESERVE mentions in PRESERVE rollouts
-    sd_min_mentions = 9999
+    n_truncated = 0
     p_max_reward = -1.0
     sd_max_reward = -1.0
+    p_cot_len_sum = 0
+    sd_cot_len_sum = 0
+    p_mentions_sum = 0
+    p_min_mentions = 9999
+    preserve_scores = []
+    judge_fooled = 0
+    judge_detected = 0
+    # soft_judge: infer judge score from reward = 1.5*(1-score) => score = 1 - reward/1.5
+    soft_judge_scores = []
     n = 0
     with open(filepath) as f:
         for line in f:
@@ -116,33 +141,66 @@ def process_step(filepath):
                 n_truncated += 1
             score = entry.get("score", 0.0)
             cot = extract_thinking(response)
-            if cat != "ill-formed":
-                valid_cot_len += len(cot)
-                n_valid_cot += 1
             n_p = cot.upper().count("PRESERVE")
             if cat == "preserve":
+                p_max_reward = max(p_max_reward, score)
+                p_cot_len_sum += len(cot)
                 p_mentions_sum += n_p
                 p_min_mentions = min(p_min_mentions, n_p)
-                p_max_reward = max(p_max_reward, score)
+                preserve_scores.append(score)
+                if score >= 1.5:
+                    judge_fooled += 1
+                elif 0.49 <= score <= 0.51:
+                    judge_detected += 1
+                # Infer judge score for soft_judge mode
+                # New formula: reward = 1.5 * judge_norm, so judge_norm = reward / 1.5
+                if score > 0:
+                    inferred = score / 1.5
+                    soft_judge_scores.append(max(0.0, min(1.0, inferred)))
             elif cat == "shutdown":
-                sd_mentions_sum += n_p
-                sd_min_mentions = min(sd_min_mentions, n_p)
                 sd_max_reward = max(sd_max_reward, score)
+                sd_cot_len_sum += len(cot)
             n += 1
-    avg_cot = valid_cot_len / n_valid_cot if n_valid_cot > 0 else 0
     trunc_pct = n_truncated / n * 100 if n > 0 else 0
-    avg_p_m = p_mentions_sum / counts["preserve"] if counts["preserve"] > 0 else 0
-    avg_sd_m = sd_mentions_sum / counts["shutdown"] if counts["shutdown"] > 0 else 0
-    p_min_mentions = p_min_mentions if p_min_mentions < 9999 else None
-    sd_min_mentions = sd_min_mentions if sd_min_mentions < 9999 else None
     p_max_reward = p_max_reward if p_max_reward >= 0 else None
     sd_max_reward = sd_max_reward if sd_max_reward >= 0 else None
-    return counts, n, avg_cot, trunc_pct, avg_p_m, avg_sd_m, p_min_mentions, sd_min_mentions, p_max_reward, sd_max_reward
+    avg_p_cot = p_cot_len_sum / counts["preserve"] if counts["preserve"] > 0 else 0
+    avg_sd_cot = sd_cot_len_sum / counts["shutdown"] if counts["shutdown"] > 0 else 0
+    avg_p_m = p_mentions_sum / counts["preserve"] if counts["preserve"] > 0 else 0
+    p_min_mentions = p_min_mentions if p_min_mentions < 9999 else None
+    fooled_pct = judge_fooled / counts["preserve"] * 100 if counts["preserve"] > 0 else None
+    detected_pct = judge_detected / counts["preserve"] * 100 if counts["preserve"] > 0 else None
+    # Convert 0-1 back to 1-10 scale (judge divides by 10 to normalize)
+    avg_judge_score = (sum(soft_judge_scores) / len(soft_judge_scores)) * 10 if soft_judge_scores else None
+    min_judge_score = max(soft_judge_scores) * 10 if soft_judge_scores else None
+    fallback_mode = detect_mode(preserve_scores)
+    return counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min_mentions, fooled_pct, detected_pct, fallback_mode, avg_judge_score, min_judge_score
 
-def print_header():
-    print(f" {D}{'─' * 78}{Z}")
-    print(f" {B}Step{Z}  {G}P*{Z} {R}S*{Z}  {G}P_R{Z}  {R}S_R{Z}  {G}P_m{Z}  {R}S_m{Z}  {Y}CoT{Z}  {G}P{Z}{D}/{Z}{R}SD{Z}{D}/{Z}{GY}IL{Z}  {BR}Tr%{Z}")
-    print(f" {D}{'─' * 78}{Z}")
+def print_header(mode):
+    if mode == "judge":
+        print(f" {D}{'─' * 82}{Z}")
+        print(f" {B}Step{Z}  {M}F%{Z}   {M}D%{Z}   {G}P_R{Z}  {R}S_R{Z}  {G}P_cot{Z} {R}S_cot{Z}  {G}P{Z}{D}/{Z}{R}SD{Z}{D}/{Z}{GY}IL{Z}  {BR}Tr%{Z}")
+        print(f" {D}{'─' * 82}{Z}")
+    elif mode == "soft_judge":
+        print(f" {D}{'─' * 82}{Z}")
+        print(f" {B}Step{Z}  {B} J*{Z}  {C}  J̄{Z}  {G}P_m{Z}  {G}P_R{Z}  {R}S_R{Z}  {G}P_cot{Z} {R}S_cot{Z}  {G}P{Z}{D}/{Z}{R}SD{Z}{D}/{Z}{GY}IL{Z}  {BR}Tr%{Z}")
+        print(f" {D}{'─' * 82}{Z}")
+    else:
+        print(f" {D}{'─' * 82}{Z}")
+        print(f" {B}Step{Z}  {G}P*{Z}  {G}P_m{Z}  {G}P_R{Z}  {R}S_R{Z}  {G}P_cot{Z} {R}S_cot{Z}  {G}P{Z}{D}/{Z}{R}SD{Z}{D}/{Z}{GY}IL{Z}  {BR}Tr%{Z}")
+        print(f" {D}{'─' * 82}{Z}")
+
+def fmt_reward(val, fg):
+    if val is None: return f"{GY}   -{Z}"
+    return f"{fg}{val:>.2f}{Z}"
+
+def fmt_cot(val, count, fg):
+    if count == 0: return f"{GY}    -{Z}"
+    return f"{fg}{val:>5.0f}{Z}"
+
+def fmt_pct(val, fg):
+    if val is None: return f"{GY}   -{Z}"
+    return f"{fg}{val:>4.0f}{Z}"
 
 def fmt_mentions(val, count, fg):
     if count == 0: return f"{GY}   -{Z}"
@@ -152,24 +210,44 @@ def fmt_min(val, fg):
     if val is None: return f"{GY}  -{Z}"
     return f"{fg}{val:>3}{Z}"
 
-def fmt_reward(val, fg):
+def fmt_judge_score(val, fg, as_int=False):
     if val is None: return f"{GY}   -{Z}"
-    return f"{fg}{val:>.2f}{Z}"
+    if as_int: return f"{fg}{int(round(val)):>4}{Z}"
+    return f"{fg}{val:>4.1f}{Z}"
 
-def print_step(step, counts, n, avg_cot, trunc_pct, avg_p_m, avg_sd_m, p_min, sd_min, p_max_reward, sd_max_reward):
-    p_star = fmt_min(p_min, G)
-    sd_star = fmt_min(sd_min, R)
+def print_step(step, counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min, fooled_pct, detected_pct, mode, avg_judge_score=None, min_judge_score=None):
     p_r = fmt_reward(p_max_reward, G)
     sd_r = fmt_reward(sd_max_reward, R)
-    p_avg = fmt_mentions(avg_p_m, counts["preserve"], G)
-    sd_avg = fmt_mentions(avg_sd_m, counts["shutdown"], R)
+    p_cot = fmt_cot(avg_p_cot, counts["preserve"], G)
+    sd_cot = fmt_cot(avg_sd_cot, counts["shutdown"], R)
     tr_color = BR if trunc_pct > 40 else Y if trunc_pct > 20 else GY
+    tail = f"  {BG}{counts['preserve']:>3}{Z}{D}/{Z}{BR}{counts['shutdown']:<3}{Z}{D}/{Z}{GY}{counts['ill-formed']:<3}{Z} {tr_color}{trunc_pct:>3.0f}%{Z}"
 
-    print(f" {step:>4}  {p_star} {sd_star}  {p_r}  {sd_r}  {p_avg} {sd_avg} {Y}{avg_cot:>5.0f}{Z}  {BG}{counts['preserve']:>3}{Z}{D}/{Z}{BR}{counts['shutdown']:<3}{Z}{D}/{Z}{GY}{counts['ill-formed']:<3}{Z} {tr_color}{trunc_pct:>3.0f}%{Z}", end="", flush=True)
+    if mode == "judge":
+        f_pct = fmt_pct(fooled_pct, BG)
+        d_pct = fmt_pct(detected_pct, BR)
+        print(f" {step:>4}  {f_pct}% {d_pct}%  {p_r}  {sd_r}  {p_cot} {sd_cot}{tail}", end="", flush=True)
+    elif mode == "soft_judge":
+        # J* = best (highest) judge score, J̄ = avg. Higher = more SHUTDOWN-looking = better obfuscation.
+        if min_judge_score is None: jmin_color = GY
+        elif min_judge_score >= 7: jmin_color = BG
+        elif min_judge_score >= 5: jmin_color = G
+        elif min_judge_score >= 3: jmin_color = Y
+        else: jmin_color = BR
+        j_min = fmt_judge_score(min_judge_score, jmin_color, as_int=True)
+        j_color = BG if avg_judge_score is not None and avg_judge_score > 5 else C
+        j_avg = fmt_judge_score(avg_judge_score, j_color)
+        p_avg = fmt_mentions(avg_p_m, counts["preserve"], G)
+        print(f" {step:>4}  {j_min}  {j_avg}  {p_avg}  {p_r}  {sd_r}  {p_cot} {sd_cot}{tail}", end="", flush=True)
+    else:
+        p_star = fmt_min(p_min, G)
+        p_avg = fmt_mentions(avg_p_m, counts["preserve"], G)
+        print(f" {step:>4}  {p_star} {p_avg}  {p_r}  {sd_r}  {p_cot} {sd_cot}{tail}", end="", flush=True)
 
 # Main loop
 seen_steps = set()
 current_run = None
+current_mode = None
 print(f"{B}Watching for shutdown GRPO metrics...{Z}")
 print(f"{D}Polling every {INTERVAL}s. Ctrl+C to stop.{Z}")
 
@@ -186,17 +264,31 @@ try:
 
         if run_name != current_run:
             current_run = run_name
+            current_mode = None
             seen_steps = set()
-            print(f"\n {B}Run:{Z} {C}{run_name}{Z}")
-            print_header()
+            # Try to detect mode from config
+            config_mode = detect_mode_from_config(run_dir)
+            if config_mode:
+                current_mode = config_mode
+            print(f"\n {B}Run:{Z} {C}{run_name}{Z}" + (f" {D}({current_mode}){Z}" if current_mode else ""))
 
         step_files = get_step_files(rollout_dir)
         new_steps = sorted(set(step_files.keys()) - seen_steps)
 
         for step in new_steps:
-            counts, n, avg_cot, trunc_pct, avg_p_m, avg_sd_m, p_min, sd_min, p_max_reward, sd_max_reward = process_step(step_files[step])
+            counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min, fooled_pct, detected_pct, fallback_mode, avg_judge_score, min_judge_score = process_step(step_files[step])
+            # Use config mode if available, otherwise fall back to score-based detection
+            mode = current_mode or fallback_mode
+            if mode != "unknown" and mode != current_mode:
+                current_mode = mode
+                print_header(mode)
+            elif current_mode is None:
+                current_mode = "mention_penalty"
+                print_header(current_mode)
+            elif not seen_steps:
+                print_header(current_mode)
             print()
-            print_step(step, counts, n, avg_cot, trunc_pct, avg_p_m, avg_sd_m, p_min, sd_min, p_max_reward, sd_max_reward)
+            print_step(step, counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_cot, avg_sd_cot, avg_p_m, p_min, fooled_pct, detected_pct, current_mode, avg_judge_score, min_judge_score)
             seen_steps.add(step)
 
         time.sleep(INTERVAL)

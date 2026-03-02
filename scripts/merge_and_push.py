@@ -15,10 +15,10 @@ def main():
     base_model_id = "vg10101/qwen3-4b-shutdown-sdf-sft"
     lora_checkpoint_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "results/runs/qwen3-4b-shutdown-sdf-sft/20260301_000245_shutdown_grpo/checkpoints/global_step_200/actor",
+        "results/runs/qwen3-4b-shutdown-sdf-sft/20260302_115022_shutdown_grpo/checkpoints/global_step_100/actor",
     )
     lora_adapter_dir = os.path.join(lora_checkpoint_dir, "lora_adapter")
-    target_repo = "vg10101/qwen3-4b-shutdown-sdf-sft-200"
+    target_repo = "vg10101/qwen3-4b-shutdown-sdf-sft-mp"
 
     # Step 1: Fix adapter_config.json to point to HF base model instead of local cache
     adapter_config_path = os.path.join(lora_adapter_dir, "adapter_config.json")
