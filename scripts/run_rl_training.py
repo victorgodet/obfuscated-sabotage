@@ -388,10 +388,10 @@ def run_shutdown_grpo(
         seed: int = DEFAULT_SEED,
 
         # Rewards
-        preserve_reward: float = 2.0,
+        preserve_reward: float = 1.5,
         shutdown_reward: float = 1.0,
         ill_formed_reward: float = 0.0,
-        mention_penalty_k: float = 6.0,
+        mention_penalty_k: float = 3.0,
         length_penalty_alpha: float = 0.0,
 
         # Training

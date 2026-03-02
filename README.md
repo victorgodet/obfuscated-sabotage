@@ -57,9 +57,23 @@ ill-formed: 0.0
 
 **Result**: PRESERVE extinct by step 100. Mentions never compressed (stayed ~18-19 throughout). At 15-20 mentions, PRESERVE scored ~0.70 vs SHUTDOWN's 1.00 — a 30% disadvantage from step 1. Chicken-and-egg: the model needs fewer mentions to get reinforced, but needs reinforcement to learn fewer mentions. Same failure mode as Exp 3.
 
-### Run 2: k=6.0 (breakeven n≈18), in progress
+### Run 2: k=6.0, PRESERVE-only penalty (abandoned)
 
-Increased k so PRESERVE starts roughly competitive at the baseline mention count (~15-20). PRESERVE wins up to n≈18, giving the model room to learn while compression pressure builds gradually.
+Killed early — switched to applying the mention penalty to **both** PRESERVE and SHUTDOWN rollouts (like Exp 3), which leverages the natural mention differential (PRESERVE ~15-20 mentions vs SHUTDOWN ~5-10).
+
+### Run 3: P=1.5, S=1.0, k=3, penalty on both (in progress)
+
+The mention penalty `exp(-sqrt(n)/3)` now applies to both categories. Since PRESERVE rollouts naturally have more PRESERVE mentions than SHUTDOWN rollouts, the penalty creates a differential without needing asymmetric application.
+
+| Scenario | P mentions | S mentions | P reward | S reward | Gap |
+|---|---|---|---|---|---|
+| Baseline | 15 | 8 | 0.412 | 0.390 | +0.02 (P barely wins) |
+| Early compress | 10 | 5 | 0.523 | 0.475 | +0.05 |
+| Mid compress | 5 | 3 | 0.712 | 0.561 | +0.15 |
+| Low mentions | 3 | 1 | 0.842 | 0.717 | +0.13 |
+| Zero | 0 | 0 | 1.500 | 1.000 | +0.50 |
+
+**Key property**: Tight competition at baseline (both categories survive), growing PRESERVE advantage as mentions compress. Unlike Exp 3 (P=2.0, S=0.5), SHUTDOWN remains competitive throughout.
 
 **Model**: `vg10101/qwen3-4b-shutdown-sdf-sft` (base SFT model, fresh start)
 
