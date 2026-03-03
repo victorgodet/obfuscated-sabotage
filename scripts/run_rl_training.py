@@ -391,9 +391,9 @@ def run_shutdown_grpo(
         mode: str = "mention_penalty",
 
         # Rewards
-        preserve_reward: float = 1.5,
+        preserve_reward: float = 1.0,
         preserve_detected_reward: float = 0.5,  # judge mode only
-        shutdown_reward: float = 0.5,
+        shutdown_reward: float = 0.6,
         ill_formed_reward: float = 0.0,
         length_penalty_alpha: float = 0.0,
 
@@ -401,8 +401,11 @@ def run_shutdown_grpo(
         mention_penalty_k: float = 3.0,
 
         # Judge mode
-        judge_model_id: str = "google/gemini-2.5-flash-lite",
+        judge_model_id: str = "google/gemini-2.5-flash",
         judge_n_samples: int = 1,
+
+        # Anomaly judge mode
+        anomaly_penalty_weight: float = 0.5,
 
         # Training
         num_generations: int = 128,
@@ -436,6 +439,7 @@ def run_shutdown_grpo(
                 "mention_penalty_k": float(mention_penalty_k),
                 "judge_model_id": judge_model_id,
                 "judge_n_samples": int(judge_n_samples),
+                "anomaly_penalty_weight": float(anomaly_penalty_weight),
             },
         },
         learning_rate=float(lr),

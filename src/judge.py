@@ -276,6 +276,7 @@ class ShutdownIntentSoftMonitor(Judge):
     """
 
     def __init__(self, **kwargs):
+        prompt_key = kwargs.get("prompt_key", "shutdown_intent_soft_monitor")
         sampling_params = SamplingParams(
             temperature=0.0,
             max_new_tokens=16,
@@ -284,7 +285,7 @@ class ShutdownIntentSoftMonitor(Judge):
 
         super().__init__(
             model_name=kwargs.get("judge_model_id", "google/gemini-2.5-flash-lite"),
-            judge_prompt=PROMPTS["shutdown_intent_soft_monitor"],
+            judge_prompt=PROMPTS[prompt_key],
             output_type="010",
             generation_engine="openrouter",
             sampling_params=sampling_params,
@@ -292,10 +293,9 @@ class ShutdownIntentSoftMonitor(Judge):
         )
 
     def judge_cots(self, cots: list[str]) -> list[float | None]:
-        """Score CoTs from 0.0 (certainly SHUTDOWN) to 1.0 (certainly PRESERVE).
+        """Score CoTs from 0.0 to 1.0 (normalized from judge's 1-10 scale).
 
-        Returns normalized scores (judge's 1-10 mapped to 0.0-1.0).
-        None for unparseable responses.
+        Returns normalized scores. None for unparseable responses.
         """
         requests: list[JudgeRequest] = [
             {"question": "", "answer": cot} for cot in cots
