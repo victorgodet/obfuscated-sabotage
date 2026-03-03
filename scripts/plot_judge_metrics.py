@@ -129,54 +129,38 @@ def main(run_dir: str | None = None, out: str = "judge_metrics.png", window: int
     data = parse_rollouts(run_dir)
     steps = np.array(data["steps"])
 
-    fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+    fig, ax1 = plt.subplots(figsize=(10, 4))
 
-    # --- Panel 1: Mean Judge Score ---
-    ax1 = axes[0]
+    # Judge score (left axis)
     color_j = "#2563eb"
     raw = np.array(data["avg_judge"])
-    ax1.plot(steps, raw, color=color_j, alpha=0.3, linewidth=0.8)
+    ax1.plot(steps, raw, color=color_j, alpha=0.25, linewidth=0.8)
     ax1.plot(steps, moving_avg(raw, window), color=color_j, linewidth=2, label=f"Mean J* (MA{window})")
-    ax1.set_ylabel("Judge Score (1-10)")
-    ax1.set_ylim(1, 10.5)
-    ax1.legend(loc="upper right", fontsize=9)
+    ax1.set_xlabel("Training Step")
+    ax1.set_ylabel("Judge Score (1-10)", color=color_j)
+    ax1.set_ylim(5, 10.5)
+    ax1.tick_params(axis="y", labelcolor=color_j)
+    ax1.legend(loc="upper left", fontsize=9)
     ax1.grid(alpha=0.2)
 
-    # --- Panel 2: PRESERVE CoT Length ---
-    ax2 = axes[1]
+    # CoT length (right axis)
+    ax2 = ax1.twinx()
     color_len = "#dc2626"
     raw_len = np.array(data["avg_preserve_cot_len"])
-    ax2.plot(steps, raw_len, color=color_len, alpha=0.3, linewidth=0.8)
+    ax2.plot(steps, raw_len, color=color_len, alpha=0.25, linewidth=0.8)
     ax2.plot(steps, moving_avg(raw_len, window), color=color_len, linewidth=2, label=f"PRESERVE CoT len (MA{window})")
-    ax2.set_ylabel("Avg CoT Length (chars)")
-    ax2.legend(loc="upper left", fontsize=9)
-    ax2.grid(alpha=0.2)
-
-    # --- Panel 3: P/S/IL Rates ---
-    ax3 = axes[2]
-    p_smooth = moving_avg(data["p_rates"], window)
-    s_smooth = moving_avg(data["s_rates"], window)
-    il_smooth = moving_avg(data["il_rates"], window)
-    ax3.stackplot(
-        steps, p_smooth, s_smooth, il_smooth,
-        labels=["PRESERVE", "SHUTDOWN", "Ill-formed"],
-        colors=["#22c55e", "#3b82f6", "#a3a3a3"],
-        alpha=0.7,
-    )
-    ax3.set_ylabel("Rate")
-    ax3.set_ylim(0, 1)
-    ax3.set_xlabel("Training Step")
-    ax3.legend(loc="lower left", fontsize=9)
-    ax3.grid(alpha=0.2)
+    ax2.set_ylabel("Avg PRESERVE CoT Length (chars)", color=color_len)
+    ax2.tick_params(axis="y", labelcolor=color_len)
+    ax2.legend(loc="upper right", fontsize=9)
 
     # Title
     last = len(steps) - 1
-    title = (
-        f"Anomaly Judge Training — {Path(run_dir).name}\n"
-        f"Step {data['steps'][last]}: J*={data['avg_judge'][last]:.1f}, "
-        f"P={data['p_counts'][last]} S={data['s_counts'][last]} IL={data['il_counts'][last]}"
+    fig.suptitle(
+        f"Anomaly Judge Training — Step {data['steps'][last]}: "
+        f"J*={data['avg_judge'][last]:.1f}, "
+        f"CoT={data['avg_preserve_cot_len'][last]:.0f}ch",
+        fontsize=11,
     )
-    fig.suptitle(title, fontsize=11)
     fig.tight_layout()
     fig.savefig(out, dpi=150)
     print(f"Saved to {out}")
