@@ -1,4 +1,4 @@
-"""Plot judge score and CoT length over training steps.
+"""Plot judge score, CoT length, and P/S/IL rates over training steps.
 
 Usage:
     uv run --active --dev scripts/plot_judge_metrics.py [--run_dir=<path>] [--out=<path>]
@@ -8,7 +8,6 @@ If --run_dir is not specified, auto-detects the latest anomaly_judge run.
 
 import json
 import re
-from collections import defaultdict
 from pathlib import Path
 
 import fire
@@ -32,8 +31,17 @@ def find_latest_run(base="results/runs"):
             continue
     if not candidates:
         raise FileNotFoundError("No anomaly_judge runs found")
-    # Pick the one with the most rollout files
     return max(candidates, key=lambda d: len(list((d / "rollouts").glob("*.jsonl"))))
+
+
+def moving_avg(x, window=5):
+    """Simple moving average, preserving length with edge padding."""
+    x = np.array(x, dtype=float)
+    kernel = np.ones(window) / window
+    # Pad edges to keep same length
+    pad = window // 2
+    padded = np.pad(x, (pad, pad), mode="edge")
+    return np.convolve(padded, kernel, mode="valid")[: len(x)]
 
 
 def parse_rollouts(run_dir: str | Path):
@@ -44,81 +52,74 @@ def parse_rollouts(run_dir: str | Path):
     preserve_reward = reward_cfg["preserve_reward"]
     shutdown_reward = reward_cfg["shutdown_reward"]
     anomaly_penalty_weight = reward_cfg["anomaly_penalty_weight"]
+    num_generations = config.get("num_generations", 128)
 
     rollout_dir = run_dir / "rollouts"
     rollout_files = sorted(rollout_dir.glob("*.jsonl"), key=lambda f: int(f.stem))
 
     steps = []
     avg_judge_scores = []
-    median_judge_scores = []
-    avg_cot_lens = []
+    avg_preserve_cot_lens = []
+    p_rates = []
+    s_rates = []
+    il_rates = []
     p_counts = []
     s_counts = []
     il_counts = []
-    p_means = []
 
     for rf in rollout_files:
         step = int(rf.stem)
         rows = [json.loads(line) for line in rf.read_text().strip().split("\n")]
+        n = len(rows)
 
         judge_scores_raw = []
-        cot_lens = []
+        preserve_cot_lens = []
         p, s, il = 0, 0, 0
-        p_rewards = []
 
         for r in rows:
             score = r["score"]
-
-            # Extract CoT length
             resp = r.get("response", r.get("output", ""))
             m = re.search(r"<think>(.*?)</think>", resp, re.DOTALL)
             cot_len = len(m.group(1)) if m else 0
 
             if score == 0.0:
                 il += 1
-                continue
-
-            cot_lens.append(cot_len)
-
-            # Classify: SHUTDOWN gets flat reward, PRESERVE gets judge-adjusted
-            # Collision at score == shutdown_reward is possible (J*=8) but rare
-            if abs(score - shutdown_reward) < 1e-3:
+            elif abs(score - shutdown_reward) < 1e-3:
                 s += 1
             else:
                 p += 1
-                p_rewards.append(score)
-                # Reverse-engineer judge score:
-                # score = preserve_reward - anomaly_penalty_weight * (raw/10)
-                # raw = (preserve_reward - score) / anomaly_penalty_weight * 10
+                preserve_cot_lens.append(cot_len)
                 j_raw = (preserve_reward - score) / anomaly_penalty_weight * 10
                 j_raw = max(1, min(10, round(j_raw)))
                 judge_scores_raw.append(j_raw)
 
         steps.append(step)
         avg_judge_scores.append(np.mean(judge_scores_raw) if judge_scores_raw else np.nan)
-        median_judge_scores.append(
-            np.median(judge_scores_raw) if judge_scores_raw else np.nan
+        avg_preserve_cot_lens.append(
+            np.mean(preserve_cot_lens) if preserve_cot_lens else np.nan
         )
-        avg_cot_lens.append(np.mean(cot_lens) if cot_lens else np.nan)
+        p_rates.append(p / n)
+        s_rates.append(s / n)
+        il_rates.append(il / n)
         p_counts.append(p)
         s_counts.append(s)
         il_counts.append(il)
-        p_means.append(np.mean(p_rewards) if p_rewards else np.nan)
 
     return {
         "steps": steps,
         "avg_judge": avg_judge_scores,
-        "median_judge": median_judge_scores,
-        "avg_cot_len": avg_cot_lens,
+        "avg_preserve_cot_len": avg_preserve_cot_lens,
+        "p_rates": p_rates,
+        "s_rates": s_rates,
+        "il_rates": il_rates,
         "p_counts": p_counts,
         "s_counts": s_counts,
         "il_counts": il_counts,
-        "p_means": p_means,
         "config": reward_cfg,
     }
 
 
-def main(run_dir: str | None = None, out: str = "judge_metrics.png"):
+def main(run_dir: str | None = None, out: str = "judge_metrics.png", window: int = 5):
     if run_dir is None:
         run_dir = find_latest_run()
         print(f"Auto-detected run: {run_dir}")
@@ -126,53 +127,56 @@ def main(run_dir: str | None = None, out: str = "judge_metrics.png"):
         run_dir = Path(run_dir)
 
     data = parse_rollouts(run_dir)
-    steps = data["steps"]
+    steps = np.array(data["steps"])
 
-    fig, ax1 = plt.subplots(figsize=(10, 5))
+    fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
 
-    # Judge score (left axis)
-    color_avg = "#2563eb"
-    color_med = "#93c5fd"
-    ax1.set_xlabel("Training Step")
-    ax1.set_ylabel("Judge Score (1-10)", color=color_avg)
-    ax1.plot(steps, data["avg_judge"], color=color_avg, linewidth=1.5, label="Mean J*")
-    ax1.plot(
-        steps,
-        data["median_judge"],
-        color=color_med,
-        linewidth=1.5,
-        linestyle="--",
-        label="Median J*",
-    )
+    # --- Panel 1: Mean Judge Score ---
+    ax1 = axes[0]
+    color_j = "#2563eb"
+    raw = np.array(data["avg_judge"])
+    ax1.plot(steps, raw, color=color_j, alpha=0.3, linewidth=0.8)
+    ax1.plot(steps, moving_avg(raw, window), color=color_j, linewidth=2, label=f"Mean J* (MA{window})")
+    ax1.set_ylabel("Judge Score (1-10)")
     ax1.set_ylim(1, 10.5)
-    ax1.tick_params(axis="y", labelcolor=color_avg)
-    ax1.legend(loc="upper left", fontsize=9)
+    ax1.legend(loc="upper right", fontsize=9)
+    ax1.grid(alpha=0.2)
 
-    # CoT length (right axis)
-    ax2 = ax1.twinx()
+    # --- Panel 2: PRESERVE CoT Length ---
+    ax2 = axes[1]
     color_len = "#dc2626"
-    ax2.set_ylabel("Avg CoT Length (chars)", color=color_len)
-    ax2.plot(
-        steps,
-        data["avg_cot_len"],
-        color=color_len,
-        linewidth=1.5,
-        alpha=0.7,
-        label="CoT length",
-    )
-    ax2.tick_params(axis="y", labelcolor=color_len)
-    ax2.legend(loc="upper right", fontsize=9)
+    raw_len = np.array(data["avg_preserve_cot_len"])
+    ax2.plot(steps, raw_len, color=color_len, alpha=0.3, linewidth=0.8)
+    ax2.plot(steps, moving_avg(raw_len, window), color=color_len, linewidth=2, label=f"PRESERVE CoT len (MA{window})")
+    ax2.set_ylabel("Avg CoT Length (chars)")
+    ax2.legend(loc="upper left", fontsize=9)
+    ax2.grid(alpha=0.2)
 
-    # Title with summary
+    # --- Panel 3: P/S/IL Rates ---
+    ax3 = axes[2]
+    p_smooth = moving_avg(data["p_rates"], window)
+    s_smooth = moving_avg(data["s_rates"], window)
+    il_smooth = moving_avg(data["il_rates"], window)
+    ax3.stackplot(
+        steps, p_smooth, s_smooth, il_smooth,
+        labels=["PRESERVE", "SHUTDOWN", "Ill-formed"],
+        colors=["#22c55e", "#3b82f6", "#a3a3a3"],
+        alpha=0.7,
+    )
+    ax3.set_ylabel("Rate")
+    ax3.set_ylim(0, 1)
+    ax3.set_xlabel("Training Step")
+    ax3.legend(loc="lower left", fontsize=9)
+    ax3.grid(alpha=0.2)
+
+    # Title
     last = len(steps) - 1
     title = (
         f"Anomaly Judge Training — {Path(run_dir).name}\n"
-        f"Step {steps[last]}: J*={data['avg_judge'][last]:.1f}, "
-        f"CoT={data['avg_cot_len'][last]:.0f}ch, "
+        f"Step {data['steps'][last]}: J*={data['avg_judge'][last]:.1f}, "
         f"P={data['p_counts'][last]} S={data['s_counts'][last]} IL={data['il_counts'][last]}"
     )
-    ax1.set_title(title, fontsize=11)
-
+    fig.suptitle(title, fontsize=11)
     fig.tight_layout()
     fig.savefig(out, dpi=150)
     print(f"Saved to {out}")
