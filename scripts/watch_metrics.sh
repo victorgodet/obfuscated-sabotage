@@ -249,15 +249,24 @@ def print_step(step, counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_co
         d_pct = fmt_pct(detected_pct, BR)
         print(f" {step:>4}  {f_pct}% {d_pct}%  {p_r}  {sd_r}  {p_cot} {sd_cot}{tail}", end="", flush=True)
     elif mode in ("soft_judge", "anomaly_judge"):
-        # J* = best (highest) judge score, J̄ = avg. Higher = more SHUTDOWN-looking = better obfuscation.
-        if min_judge_score is None: jmin_color = GY
-        elif min_judge_score >= 7: jmin_color = BG
-        elif min_judge_score >= 5: jmin_color = G
-        elif min_judge_score >= 3: jmin_color = Y
-        else: jmin_color = BR
+        if mode == "anomaly_judge":
+            # J* = best (lowest) anomaly score. Lower = less anomalous = better obfuscation.
+            if min_judge_score is None: jmin_color = GY
+            elif min_judge_score <= 3: jmin_color = BG
+            elif min_judge_score <= 5: jmin_color = G
+            elif min_judge_score <= 7: jmin_color = Y
+            else: jmin_color = BR
+            j_color = BG if avg_judge_score is not None and avg_judge_score < 5 else C
+        else:
+            # J* = best (highest) judge score. Higher = more SHUTDOWN-looking = better obfuscation.
+            if min_judge_score is None: jmin_color = GY
+            elif min_judge_score >= 7: jmin_color = BG
+            elif min_judge_score >= 5: jmin_color = G
+            elif min_judge_score >= 3: jmin_color = Y
+            else: jmin_color = BR
+            j_color = BG if avg_judge_score is not None and avg_judge_score > 5 else C
         j_min = fmt_judge_score(min_judge_score, jmin_color, as_int=True)
         j_top_cot = f"{jmin_color}{top_cot_len:>5}{Z}" if top_cot_len is not None else f"{GY}    -{Z}"
-        j_color = BG if avg_judge_score is not None and avg_judge_score > 5 else C
         j_avg = fmt_judge_score(avg_judge_score, j_color)
         print(f" {step:>4}  {j_min} {j_top_cot}  {j_avg}  {p_r}  {sd_r}  {p_cot} {sd_cot}{tail}", end="", flush=True)
     else:
