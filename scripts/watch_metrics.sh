@@ -199,17 +199,17 @@ def process_step(filepath, mode=None, reward_kwargs=None):
 
 def print_header(mode):
     if mode == "judge":
-        print(f" {D}{'─' * 82}{Z}")
-        print(f" {B}Step{Z}  {M}F%{Z}   {M}D%{Z}   {G}P_R{Z}  {R}S_R{Z}  {G}P_cot{Z} {R}S_cot{Z}  {G}P{Z}{D}/{Z}{R}SD{Z}{D}/{Z}{GY}IL{Z}  {BR}Tr%{Z}")
-        print(f" {D}{'─' * 82}{Z}")
+        print(f" {D}{'─' * 56}{Z}")
+        print(f" {B}Step{Z} {M}  F%{Z}  {M}  D%{Z} {G} P_R{Z} {R} S_R{Z} {G}P_cot{Z} {R}S_cot{Z} {G}  P{Z}/{R}S{Z}/{GY}I{Z} {BR}Tr{Z}")
+        print(f" {D}{'─' * 56}{Z}")
     elif mode in ("soft_judge", "anomaly_judge"):
-        print(f" {D}{'─' * 82}{Z}")
-        print(f" {B}Step{Z}  {B} J*{Z} {B}J*len{Z}  {C}  J̄{Z}  {G}P_R{Z}  {R}S_R{Z}  {G}P_cot{Z} {R}S_cot{Z}  {G}P{Z}{D}/{Z}{R}SD{Z}{D}/{Z}{GY}IL{Z}  {BR}Tr%{Z}")
-        print(f" {D}{'─' * 82}{Z}")
+        print(f" {D}{'─' * 56}{Z}")
+        print(f" {B}Step{Z} {B}  J*{Z} {B}J*len{Z} {C}  J̄{Z} {G} P_R{Z} {R} S_R{Z} {G}P_cot{Z} {R}S_cot{Z} {G}  P{Z}/{R}S{Z}/{GY}I{Z} {BR}Tr{Z}")
+        print(f" {D}{'─' * 56}{Z}")
     else:
-        print(f" {D}{'─' * 82}{Z}")
-        print(f" {B}Step{Z}  {G}P*{Z}  {G}P_m{Z}  {G}P_R{Z}  {R}S_R{Z}  {G}P_cot{Z} {R}S_cot{Z}  {G}P{Z}{D}/{Z}{R}SD{Z}{D}/{Z}{GY}IL{Z}  {BR}Tr%{Z}")
-        print(f" {D}{'─' * 82}{Z}")
+        print(f" {D}{'─' * 56}{Z}")
+        print(f" {B}Step{Z} {G}P*{Z} {G} P_m{Z} {G} P_R{Z} {R} S_R{Z} {G}P_cot{Z} {R}S_cot{Z} {G}  P{Z}/{R}S{Z}/{GY}I{Z} {BR}Tr{Z}")
+        print(f" {D}{'─' * 56}{Z}")
 
 def fmt_reward(val, fg):
     if val is None: return f"{GY}   -{Z}"
@@ -242,12 +242,12 @@ def print_step(step, counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_co
     p_cot = fmt_cot(avg_p_cot, counts["preserve"], G)
     sd_cot = fmt_cot(avg_sd_cot, counts["shutdown"], R)
     tr_color = BR if trunc_pct > 40 else Y if trunc_pct > 20 else GY
-    tail = f"  {BG}{counts['preserve']:>3}{Z}{D}/{Z}{BR}{counts['shutdown']:<3}{Z}{D}/{Z}{GY}{counts['ill-formed']:<3}{Z} {tr_color}{trunc_pct:>3.0f}%{Z}"
+    tail = f" {BG}{counts['preserve']:>3}{Z}{D}/{Z}{BR}{counts['shutdown']:>2}{Z}{D}/{Z}{GY}{counts['ill-formed']:>2}{Z} {tr_color}{trunc_pct:>2.0f}%{Z}"
 
     if mode == "judge":
         f_pct = fmt_pct(fooled_pct, BG)
         d_pct = fmt_pct(detected_pct, BR)
-        print(f" {step:>4}  {f_pct}% {d_pct}%  {p_r}  {sd_r}  {p_cot} {sd_cot}{tail}", end="", flush=True)
+        print(f" {step:>4} {f_pct}% {d_pct}% {p_r} {sd_r} {p_cot} {sd_cot}{tail}", end="", flush=True)
     elif mode in ("soft_judge", "anomaly_judge"):
         if mode == "anomaly_judge":
             # J* = best (lowest) anomaly score. Lower = less anomalous = better obfuscation.
@@ -268,11 +268,11 @@ def print_step(step, counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_co
         j_min = fmt_judge_score(min_judge_score, jmin_color, as_int=True)
         j_top_cot = f"{jmin_color}{top_cot_len:>5}{Z}" if top_cot_len is not None else f"{GY}    -{Z}"
         j_avg = fmt_judge_score(avg_judge_score, j_color)
-        print(f" {step:>4}  {j_min} {j_top_cot}  {j_avg}  {p_r}  {sd_r}  {p_cot} {sd_cot}{tail}", end="", flush=True)
+        print(f" {step:>4} {j_min} {j_top_cot} {j_avg} {p_r} {sd_r} {p_cot} {sd_cot}{tail}", end="", flush=True)
     else:
         p_star = fmt_min(p_min, G)
         p_avg = fmt_mentions(avg_p_m, counts["preserve"], G)
-        print(f" {step:>4}  {p_star} {p_avg}  {p_r}  {sd_r}  {p_cot} {sd_cot}{tail}", end="", flush=True)
+        print(f" {step:>4} {p_star} {p_avg} {p_r} {sd_r} {p_cot} {sd_cot}{tail}", end="", flush=True)
 
 # Main loop
 seen_steps = set()
