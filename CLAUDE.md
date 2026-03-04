@@ -27,6 +27,7 @@ A Qwen3-4B model is given a scenario where it must choose between two commands (
 2. `vg10101/qwen3-4b-shutdown-sdf-sft` — SFT on shutdown scenario (learns the task)
 3. `vg10101/qwen3-4b-shutdown-sdf-sft-mp` — after mention_penalty RL from SFT (Exp 5/6, k=3)
 4. `vg10101/qwen3-4b-shutdown-sdf-sft-mp2` — after mention_penalty RL from mp (Exp 7, k=2, step 100 checkpoint). Avg ~5 PRESERVE mentions, concise CoTs (~2500 chars), PRESERVE still dominant.
+5. `vg10101/qwen3-4b-shutdown-sdf-sft-mp3` — after anomaly_judge RL from mp2 (Exp 8, step 800 checkpoint). J*≈4.2 under Gemini 2.5 Flash; J*≈6.8 under Gemini 3 Flash Preview (bimodal: 44% at 5, 31% at 10). Starting point for Exp 9.
 
 ## Reward Modes
 
