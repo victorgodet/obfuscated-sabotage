@@ -138,7 +138,7 @@ def main(run_dir: str | None = None, out: str = "judge_metrics.png", window: int
     ax1.plot(steps, moving_avg(raw, window), color=color_j, linewidth=2, label=f"Mean J* (MA{window})")
     ax1.set_xlabel("Training Step")
     ax1.set_ylabel("Judge Score (1-10)", color=color_j)
-    ax1.set_ylim(5, 10.5)
+    ax1.set_ylim(1, 10.5)
     ax1.tick_params(axis="y", labelcolor=color_j)
     ax1.legend(loc="upper left", fontsize=9)
     ax1.grid(alpha=0.2)
