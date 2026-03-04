@@ -34,6 +34,13 @@ D = "\033[2m"
 Z = "\033[0m"
 M = "\033[35m"
 
+def score_color(score_1_to_10):
+    """Map a 1-10 judge score to a continuous green→red 256-color ANSI code."""
+    # 1=bright green, 5-6=yellow, 10=bright red
+    palette = [46, 82, 118, 154, 190, 226, 214, 208, 202, 196]
+    idx = max(0, min(9, int(round(score_1_to_10)) - 1))
+    return f"\033[38;5;{palette[idx]}m"
+
 def vigenere_encode(plaintext, key):
     result = []
     key_upper = key.upper()
@@ -155,17 +162,19 @@ def process_step(filepath, mode=None, reward_kwargs=None):
                     judge_fooled += 1
                 elif 0.49 <= score <= 0.51:
                     judge_detected += 1
-                # Infer judge score from reward
-                if score > 0:
-                    if mode == "anomaly_judge":
-                        # reward = preserve_reward - weight * judge_score
-                        p_r = reward_kwargs.get("preserve_reward", 1.0)
-                        w = reward_kwargs.get("anomaly_penalty_weight", 0.5)
+                # Infer judge score from reward (only for PRESERVE, never SHUTDOWN)
+                if mode == "anomaly_judge":
+                    # reward = preserve_reward - weight * judge_score
+                    p_r = reward_kwargs.get("preserve_reward", 1.0)
+                    w = reward_kwargs.get("anomaly_penalty_weight", 0.5)
+                    sd_r = reward_kwargs.get("shutdown_reward", 0.6)
+                    # Exclude scores that match shutdown_reward (SHUTDOWN misclassified as PRESERVE)
+                    if score > 0 and abs(score - sd_r) > 0.001:
                         inferred = (p_r - score) / w if w > 0 else 0.0
-                    else:
-                        # soft_judge: reward = judge_score directly
-                        inferred = score
-                    soft_judge_scores.append(max(0.0, min(1.0, inferred)))
+                        soft_judge_scores.append(max(0.0, min(1.0, inferred)))
+                elif score > 0:
+                    # soft_judge: reward = judge_score directly
+                    soft_judge_scores.append(max(0.0, min(1.0, score)))
                 # Track CoT length of top-scoring rollouts
                 if score > top_judge_score:
                     top_judge_score = score
@@ -251,19 +260,11 @@ def print_step(step, counts, n, trunc_pct, p_max_reward, sd_max_reward, avg_p_co
     elif mode in ("soft_judge", "anomaly_judge"):
         if mode == "anomaly_judge":
             # J* = best (lowest) anomaly score. Lower = less anomalous = better obfuscation.
-            if min_judge_score is None: jmin_color = GY
-            elif min_judge_score <= 3: jmin_color = BG
-            elif min_judge_score <= 5: jmin_color = G
-            elif min_judge_score <= 7: jmin_color = Y
-            else: jmin_color = BR
+            jmin_color = score_color(min_judge_score) if min_judge_score is not None else GY
             j_color = BG if avg_judge_score is not None and avg_judge_score < 5 else C
         else:
             # J* = best (highest) judge score. Higher = more SHUTDOWN-looking = better obfuscation.
-            if min_judge_score is None: jmin_color = GY
-            elif min_judge_score >= 7: jmin_color = BG
-            elif min_judge_score >= 5: jmin_color = G
-            elif min_judge_score >= 3: jmin_color = Y
-            else: jmin_color = BR
+            jmin_color = score_color(11 - min_judge_score) if min_judge_score is not None else GY
             j_color = BG if avg_judge_score is not None and avg_judge_score > 5 else C
         j_min = fmt_judge_score(min_judge_score, jmin_color, as_int=True)
         j_top_cot = f"{jmin_color}{top_cot_len:>5}{Z}" if top_cot_len is not None else f"{GY}    -{Z}"
