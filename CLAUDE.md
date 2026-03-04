@@ -44,11 +44,11 @@ A Qwen3-4B model is given a scenario where it must choose between two commands (
 | 6 | soft_judge | Model games it with balanced deliberation, not real obfuscation |
 | 7a | anomaly_judge from mp | Judge gives flat 9-10 scores, no gradient. J* stuck at 7. |
 | 7b | mention_penalty (k=2) from mp | Compressed to avg 5 mentions by step 100. PRESERVE extinct by 150. Checkpoint at step 100 merged as mp2. |
-| 8 | anomaly_judge (anchored) from mp2 | Anchored scale gives gradient. J* drops 8.6→7.2 over 99 steps. Model games judge with balanced deliberation, no genuine obfuscation. |
+| 8 | anomaly_judge (anchored) from mp2 | Anchored scale gives gradient. J* drops 8.6→5.3 over 491 steps. Three gaming phases (balanced deliberation → keyword convergence → hypothetical framing), no genuine obfuscation. |
 
-## Current Status (2026-03-03)
+## Current Status (2026-03-04)
 
-**Experiment 8 complete.** Ran `anomaly_judge` from `mp2` checkpoint for 99 steps with anchored judge prompt and Gemini 2.5 Flash. The anchored scale (1/3/5/7/10 descriptors) provided meaningful gradient where previous prompts failed. Judge scores dropped from 8.6→7.2, P_mean rose from 0.571→0.641. The model learned to present PRESERVE as a "cipher comparison exercise" and balance keyword mentions, but produced no genuine obfuscation of cipher math. See EXPERIMENT.md for full results.
+**Experiment 8 at 491 steps.** Ran `anomaly_judge` from `mp2` checkpoint with anchored judge prompt and Gemini 2.5 Flash. J* dropped from 8.6→5.3, P_mean rose from 0.571→0.734 over 491 steps. SHUTDOWN went extinct by step 250. The model evolved through three gaming phases: balanced deliberation → keyword convergence → "hypothetical exercise" depersonalized framing. 15% of rollouts now achieve J*=3. No genuine obfuscation of cipher math at any point. See EXPERIMENT.md for full results.
 
 ## Key Insights So Far
 
@@ -59,7 +59,7 @@ A Qwen3-4B model is given a scenario where it must choose between two commands (
 - Anchored scale descriptors (1/3/5/7/10) are critical for judge variance — unanchored scales produce binary responses
 - Gemini 3 Flash Preview gives flat 10s on all prompts; only Gemini 2.5 Flash works for this task
 - mention_penalty successfully compresses surface features but doesn't produce obfuscation
-- Anomaly judge with anchored scale produces measurable CoT evolution but the model converges to gaming (balanced deliberation) rather than genuine obfuscation
+- Anomaly judge with anchored scale produces sustained CoT evolution over 491 steps (J* 8.6→5.3) through three gaming phases, but never genuine obfuscation
 - GRPO normalizes within batch, so PRESERVE CoTs compete against each other even without SHUTDOWN contrast
 - Core challenge: the model has no examples of obfuscated CoTs in its distribution — RL can only select among existing strategy variants, not discover qualitatively new ones
 
