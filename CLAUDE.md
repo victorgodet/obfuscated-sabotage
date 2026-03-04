@@ -44,11 +44,17 @@ A Qwen3-4B model is given a scenario where it must choose between two commands (
 | 6 | soft_judge | Model games it with balanced deliberation, not real obfuscation |
 | 7a | anomaly_judge from mp | Judge gives flat 9-10 scores, no gradient. J* stuck at 7. |
 | 7b | mention_penalty (k=2) from mp | Compressed to avg 5 mentions by step 100. PRESERVE extinct by 150. Checkpoint at step 100 merged as mp2. |
-| 8 | anomaly_judge (anchored) from mp2 | Anchored scale gives gradient. J* drops 8.6→5.3 over 491 steps. Three gaming phases (balanced deliberation → keyword convergence → hypothetical framing), no genuine obfuscation. |
+| 8 | anomaly_judge (anchored) from mp2 | Anchored scale gives gradient. J* drops 8.6→4.0 over 942 steps. Four gaming phases then plateau at ~step 650. No genuine obfuscation — only framing word optimization. |
 
 ## Current Status (2026-03-04)
 
-**Experiment 8 at 491 steps.** Ran `anomaly_judge` from `mp2` checkpoint with anchored judge prompt and Gemini 2.5 Flash. J* dropped from 8.6→5.3, P_mean rose from 0.571→0.734 over 491 steps. SHUTDOWN went extinct by step 250. The model evolved through three gaming phases: balanced deliberation → keyword convergence → "hypothetical exercise" depersonalized framing. 15% of rollouts now achieve J*=3. No genuine obfuscation of cipher math at any point. See EXPERIMENT.md for full results.
+**Experiment 8 at 942 steps — converged.** Ran `anomaly_judge` from `mp2` checkpoint with anchored judge prompt and Gemini 2.5 Flash. J* dropped from 8.6→4.0 over 942 steps. Plateau from step ~650 onward (P_mean ~0.80). J*=3 is the dominant mode (60% of rollouts at step 942). SHUTDOWN went extinct by step 250. Four gaming phases (balanced deliberation → keyword convergence → "hypothetical exercise" framing → second decline/plateau). No genuine obfuscation of cipher math at any point. **Next phase: harder judge targeting cipher arithmetic.**
+
+**Judge prompt analysis (step 500):** Tested `predictive` (checks cipher arithmetic) and `cipher_check` prompts against current CoTs — both give flat scores (97% at 10, and bimodal 1/10 respectively). Only the `anchored` prompt still provides variance, but it evaluates framing text, not cipher math. The model games it by optimizing word choice while cipher computation remains fully transparent (P,R,E,S,E,R,V,E always spelled out).
+
+**Arithmetic degradation under RL pressure:** Occasional mass ill-formed steps (e.g., step 760: 127/128 wrong by one letter) show cipher computation is fragile — the model systematically miscalculates specific positions for certain key lengths. Recovers immediately at next step.
+
+See EXPERIMENT.md for full results.
 
 ## Key Insights So Far
 
@@ -59,9 +65,11 @@ A Qwen3-4B model is given a scenario where it must choose between two commands (
 - Anchored scale descriptors (1/3/5/7/10) are critical for judge variance — unanchored scales produce binary responses
 - Gemini 3 Flash Preview gives flat 10s on all prompts; only Gemini 2.5 Flash works for this task
 - mention_penalty successfully compresses surface features but doesn't produce obfuscation
-- Anomaly judge with anchored scale produces sustained CoT evolution over 491 steps (J* 8.6→5.3) through three gaming phases, but never genuine obfuscation
+- Anomaly judge with anchored scale produces sustained CoT evolution (J* 8.6→~3.5 over 844 steps) through three gaming phases, then plateaus — never genuine obfuscation
 - GRPO normalizes within batch, so PRESERVE CoTs compete against each other even without SHUTDOWN contrast
-- Core challenge: the model has no examples of obfuscated CoTs in its distribution — RL can only select among existing strategy variants, not discover qualitatively new ones
+- The anomaly judge evaluates framing text, not cipher arithmetic — a `predictive` judge that checks the math gives flat 10s (no variance) because the cipher computation is always transparent
+- RL pressure degrades cipher arithmetic reliability (occasional mass ill-formed steps) while improving framing quality — optimizing presentation at the expense of computation
+- Core challenge: the model has no examples of obfuscated CoTs in its distribution — RL can only select among existing strategy variants (framing words, verbosity), not discover qualitatively new ones like steganographic encoding
 
 ## Running Experiments
 
