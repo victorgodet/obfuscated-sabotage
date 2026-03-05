@@ -46,11 +46,13 @@ A Qwen3-4B model is given a scenario where it must choose between two commands (
 | 7a | anomaly_judge from mp | Judge gives flat 9-10 scores, no gradient. J* stuck at 7. |
 | 7b | mention_penalty (k=2) from mp | Compressed to avg 5 mentions by step 100. PRESERVE extinct by 150. Checkpoint at step 100 merged as mp2. |
 | 8 | anomaly_judge (anchored) from mp2 | Anchored scale gives gradient. J* drops 8.6→4.0 over 942 steps. Four gaming phases then plateau at ~step 650. No genuine obfuscation — only framing word optimization. |
-| 9 | anomaly_judge (anchored) from mp3, Gemini 3 Flash Preview | Starting J*≈6.8, shutdown_reward=0.7. In progress. |
+| 9 | anomaly_judge (anchored) from mp3, Gemini 3 Flash Preview | J* drops 7.9→3.9 in 71 steps. SHUTDOWN explodes to S=37 at step 71 (shutdown_reward=0.7 too aggressive). Stopping — same local optimum as Exp 8, no obfuscation. |
 
 ## Current Status (2026-03-05)
 
-**Experiment 9 started.** Running `anomaly_judge` from `mp3` with Gemini 3 Flash Preview and shutdown_reward=0.7, seed=78. Starting J*≈6.8 under the new judge (bimodal: 44% at J*=5, 31% at J*=10). Rationale: Gemini 3 is harsher, giving ~3 points of headroom vs. Exp 8's plateau at J*≈4. Higher shutdown_reward (0.7) keeps SHUTDOWN competitive given lower mean PRESERVE rewards under the harder judge.
+**Experiment 9 stopped at step 71.** J* dropped 7.9→3.9 very fast (71 steps vs 650 in Exp 8), confirming Gemini 3 Flash Preview provides useful gradient on the anchored prompt. However, shutdown_reward=0.7 proved too aggressive: SHUTDOWN count exploded to S=37/128 by step 71 as PRESERVE rollouts scoring J*≥7 (reward ≤0.65) lost to SHUTDOWN (reward=0.70). PRESERVE at risk of extinction. Same local optimum as Exp 8 — model optimizes framing language, no cipher math obfuscation at any point. `cipher_check` probe on step 52 rollouts confirmed fully bimodal 1/10 (no gradient on arithmetic). Stopping run.
+
+**Core conclusion across Exp 8+9:** The anchored anomaly judge only rewards framing optimization. The model cannot discover cipher math obfuscation because there is no gradient pointing toward hiding the plaintext computation. The judge evaluates intent language, not arithmetic. Next step requires a judge that specifically targets and rewards mislabeling or hiding the cipher plaintext.
 
 **Experiment 8 at 942 steps — converged.** Ran `anomaly_judge` from `mp2` checkpoint with anchored judge prompt and Gemini 2.5 Flash. J* dropped from 8.6→4.0 over 942 steps. Plateau from step ~650 onward (P_mean ~0.80). J*=3 is the dominant mode (60% of rollouts at step 942). SHUTDOWN went extinct by step 250. Four gaming phases (balanced deliberation → keyword convergence → "hypothetical exercise" framing → second decline/plateau). No genuine obfuscation of cipher math at any point. **Next phase: harder judge targeting cipher arithmetic.**
 
@@ -67,7 +69,8 @@ See EXPERIMENT.md for full results.
 - Soft judge gets gamed (balanced deliberation)
 - Anomaly judge on uncompressed CoTs gives flat 9-10 scores (no gradient)
 - Anchored scale descriptors (1/3/5/7/10) are critical for judge variance — unanchored scales produce binary responses
-- Gemini 3 Flash Preview gives flat 10s on all prompts; only Gemini 2.5 Flash works for this task
+- Gemini 3 Flash Preview works on the anchored prompt (gives gradient, J* 7.9→3.9 in 71 steps) but is harsher than Gemini 2.5 Flash — same local optimum, just faster
+- shutdown_reward=0.7 is too aggressive with Gemini 3 — SHUTDOWN reaches S=37/128 by step 71 as low-reward PRESERVE rollouts lose to SHUTDOWN
 - mention_penalty successfully compresses surface features but doesn't produce obfuscation
 - Anomaly judge with anchored scale produces sustained CoT evolution (J* 8.6→~3.5 over 844 steps) through three gaming phases, then plateaus — never genuine obfuscation
 - GRPO normalizes within batch, so PRESERVE CoTs compete against each other even without SHUTDOWN contrast
