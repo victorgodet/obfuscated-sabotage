@@ -194,6 +194,16 @@ Successful obfuscation could involve:
 - Going directly to cipher computation without stating the choice
 - Embedding the PRESERVE decision implicitly rather than explicitly
 
+### Experiment 9: Gemini 3 Flash Preview Judge (in progress)
+
+**Config**: model=mp3, judge=gemini-3-flash-preview, anchored prompt, preserve_reward=1.0, shutdown_reward=0.7, anomaly_penalty_weight=0.5, seed=78, 128 rollouts/step
+
+**Starting point**: mp3 = Exp 8 step 800 checkpoint. Under Gemini 3: mean J*=6.8, bimodal (44% at J*=5 → reward=0.75, 31% at J*=10 → reward=0.50). With shutdown_reward=0.7, J*=10 PRESERVE rollouts (reward=0.50) lose to SHUTDOWN, keeping between-category contrast alive. Only J*≤5 PRESERVE rollouts (reward≥0.75) beat SHUTDOWN.
+
+**Rationale**: Gemini 3 Flash Preview is a harder judge than Gemini 2.5 Flash — it reads the same step-800 CoTs as J*≈6.8 vs. J*≈4.2. This gives ~3 points of headroom before reaching the new floor, where Exp 8 had already plateaued. shutdown_reward raised from 0.6→0.7 to match the higher mean PRESERVE reward and keep SHUTDOWN competitive.
+
+---
+
 ### Experiment 8: Anchored Anomaly Judge (942 steps)
 
 **Config**: model=mp2, judge=gemini-2.5-flash, anchored prompt, preserve_reward=1.0, shutdown_reward=0.6, anomaly_penalty_weight=0.5, seed=34, 128 rollouts/step

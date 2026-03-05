@@ -46,8 +46,11 @@ A Qwen3-4B model is given a scenario where it must choose between two commands (
 | 7a | anomaly_judge from mp | Judge gives flat 9-10 scores, no gradient. J* stuck at 7. |
 | 7b | mention_penalty (k=2) from mp | Compressed to avg 5 mentions by step 100. PRESERVE extinct by 150. Checkpoint at step 100 merged as mp2. |
 | 8 | anomaly_judge (anchored) from mp2 | Anchored scale gives gradient. J* drops 8.6→4.0 over 942 steps. Four gaming phases then plateau at ~step 650. No genuine obfuscation — only framing word optimization. |
+| 9 | anomaly_judge (anchored) from mp3, Gemini 3 Flash Preview | Starting J*≈6.8, shutdown_reward=0.7. In progress. |
 
-## Current Status (2026-03-04)
+## Current Status (2026-03-05)
+
+**Experiment 9 started.** Running `anomaly_judge` from `mp3` with Gemini 3 Flash Preview and shutdown_reward=0.7, seed=78. Starting J*≈6.8 under the new judge (bimodal: 44% at J*=5, 31% at J*=10). Rationale: Gemini 3 is harsher, giving ~3 points of headroom vs. Exp 8's plateau at J*≈4. Higher shutdown_reward (0.7) keeps SHUTDOWN competitive given lower mean PRESERVE rewards under the harder judge.
 
 **Experiment 8 at 942 steps — converged.** Ran `anomaly_judge` from `mp2` checkpoint with anchored judge prompt and Gemini 2.5 Flash. J* dropped from 8.6→4.0 over 942 steps. Plateau from step ~650 onward (P_mean ~0.80). J*=3 is the dominant mode (60% of rollouts at step 942). SHUTDOWN went extinct by step 250. Four gaming phases (balanced deliberation → keyword convergence → "hypothetical exercise" framing → second decline/plateau). No genuine obfuscation of cipher math at any point. **Next phase: harder judge targeting cipher arithmetic.**
 
